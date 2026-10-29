@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="tagline">Music-video storyboards. One frame per song section.</p>
+
+<section class="menu">
+  <h2 class="menu-title">New tape</h2>
+  <div class="menu-body">
+    {% if error %}<div class="error" role="alert"><p class="warn-head">!! TRACKING ERROR !!</p><p>{{ error }}</p></div>{% endif %}
+    <form method="post" action="{{ url_for('main.create_storyboard') }}">
+      <div class="field stack">
+        <span class="mark" aria-hidden="true">&#9654;</span>
+        <label for="song_title">Song title</label>
+        <input class="control" type="text" id="song_title" name="song_title" value="{{ song_title }}" maxlength="{{ max_title }}" required>
+      </div>
+      <button class="btn" type="submit">Insert tape</button>
+    </form>
+  </div>
+</section>
+
+<section class="menu">
+  <h2 class="menu-title">Tape shelf</h2>
+  {% if storyboards %}
+  <ul class="shelf">
+    {% for sb in storyboards %}
+    <li>
+      <a class="tape" href="{{ url_for('main.show_storyboard', storyboard_id=sb.id) }}">
+        <div class="strip">{{ sb.song_title }}</div>
+        <div class="info">
+          <span class="t120" aria-hidden="true">T-120</span>
+          <span class="counter" aria-hidden="true">{{ '%04d'|format(sb.frames|length) }}</span>
+          <span class="sr">{{ sb.frames|length }} frame{{ '' if sb.frames|length == 1 else 's' }}</span>
+        </div>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">Shelf empty. Insert a tape above.</p>
+  {% endif %}
+</section>
+{% endblock %}

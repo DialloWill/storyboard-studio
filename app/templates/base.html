@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Storyboard Studio{% endblock %}</title>
+<style>
+  :root {
+    --blue: #0000aa;
+    --white: #ffffff;
+    --yellow: #ffff99;
+    --red: #ff2a2a;
+    --black: #000000;
+    --mono: "Courier New", Consolas, "Lucida Console", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { overflow-x: hidden; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--blue);
+    color: var(--white);
+    font-family: var(--mono);
+    font-size: 1rem;
+    line-height: 1.45;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.35);
+    overflow-wrap: anywhere;
+    overflow-x: hidden;
+  }
+  /* very light vignette over the whole page */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 65%, rgba(0,0,0,0.3) 100%);
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
+  a { color: var(--yellow); }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  h1, h2, h3 { margin: 0; font-weight: bold; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---- OSD title bar ---- */
+  .osd-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+             padding: 16px 0 10px; border-bottom: 3px solid var(--white); margin-bottom: 20px; }
+  .osd-bar h1 { color: var(--yellow); font-size: 1.3rem; }
+  .osd-bar .mode { color: var(--white); }
+  .tagline { margin: 0 0 20px; }
+  .page-title { color: var(--yellow); font-size: 1.5rem; margin: 8px 0 16px; }
+
+  /* ---- menu panels ---- */
+  .menu { border: 3px solid var(--white); margin: 0 0 24px; }
+  .menu-title { background: var(--white); color: var(--blue); text-shadow: none; padding: 4px 12px;
+                font-size: 1rem; letter-spacing: 0.15em; }
+  .menu-body { padding: 10px 6px 14px; }
+  .menu-body > p { margin: 8px 8px; }
+  form { max-width: 760px; }
+
+  /* ---- setup-menu rows ---- */
+  .field { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 2px 0; }
+  .field .mark { visibility: hidden; width: 1.2ch; flex: none; }
+  .field label { flex: none; }
+  .field .leader { flex: 1 1 24px; min-width: 16px; border-bottom: 2px dotted var(--white); align-self: flex-end;
+                   margin-bottom: 0.5em; }
+  .field.stack { flex-wrap: wrap; align-items: stretch; }
+  .field.stack .leader { display: none; }
+  .field.stack label { flex: 1 1 calc(100% - 3ch); }
+  .field.stack .control { flex: 1 1 100%; }
+  .field:focus-within { background: var(--white); color: var(--blue); text-shadow: none; }
+  .field:focus-within .mark { visibility: visible; }
+  .field:focus-within .leader { border-bottom-color: var(--blue); }
+  .control {
+    flex: 0 1 52%; min-width: 0;
+    background: var(--blue); color: var(--white); text-shadow: none;
+    border: 2px solid var(--white); border-radius: 0;
+    font: inherit; letter-spacing: inherit; text-transform: uppercase;
+    padding: 6px 8px; color-scheme: dark;
+  }
+  textarea.control, input.control { text-transform: none; letter-spacing: 0.04em; }
+  textarea.control { resize: vertical; }
+  .control:focus { outline: 3px solid var(--black); outline-offset: 1px; }
+
+  .btn { display: inline-block; margin: 14px 8px 0; padding: 8px 18px; cursor: pointer;
+         background: var(--white); color: var(--blue); text-shadow: none;
+         border: 3px solid var(--white); border-radius: 0; font: inherit; font-weight: bold;
+         letter-spacing: 0.15em; text-transform: uppercase; text-decoration: none; }
+  .btn:hover, .btn:focus-visible { background: var(--yellow); border-color: var(--yellow); }
+  .btn .rec { color: var(--red); }
+
+  /* ---- tracking-error warning box ---- */
+  .error { background: var(--black); border: 4px solid var(--yellow); padding: 12px 16px; margin: 0 0 20px; }
+  .error p { margin: 0; }
+  .error .warn-head { color: var(--yellow); font-weight: bold; letter-spacing: 0.2em; margin-bottom: 6px; }
+
+  /* ---- tape shelf (home) ---- */
+  .shelf { list-style: none; margin: 0; padding: 8px; display: grid; gap: 18px;
+           grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .shelf li { min-width: 0; }
+  .tape { display: block; background: var(--black); color: var(--white); text-decoration: none;
+          border: 2px solid var(--white); padding: 10px 10px 8px; }
+  .tape:hover, .tape:focus-visible { border-color: var(--yellow); }
+  .tape .strip { background: #f3efe0; color: #14143c; text-shadow: none; padding: 8px 10px;
+                 transform: rotate(-1.5deg); text-transform: none; letter-spacing: 0.01em;
+                 font-family: "Segoe Print", "Bradley Hand", "Marker Felt", "Comic Sans MS", "Chalkboard SE", cursive;
+                 font-weight: bold; font-size: 1.15rem; line-height: 1.2; min-height: 3.2em; }
+  .shelf li:nth-child(even) .strip { transform: rotate(1deg); }
+  .tape .info { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+  .tape .t120 { border: 2px solid var(--white); padding: 0 6px; font-weight: bold; }
+  .tape .counter { background: var(--black); border: 2px solid var(--white); color: var(--yellow);
+                   padding: 0 6px; letter-spacing: 0.15em; }
+  .empty { margin: 8px; }
+
+  /* ---- viewfinder reel ---- */
+  .reel { display: flex; gap: 20px; overflow-x: auto; padding: 4px 4px 14px; }
+  .shot { flex: 0 0 min(460px, 92%); margin: 0; min-width: 0; }
+  .shot .ch { color: var(--yellow); font-weight: bold; margin-bottom: 6px; letter-spacing: 0.15em; }
+  .vf { position: relative; background: var(--black); padding: 18px; }
+  .vf-screen { position: relative; }
+  .vf-screen img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--black); }
+  .vf-scan { position: absolute; inset: 0; pointer-events: none;
+             background: repeating-linear-gradient(0deg, rgba(0,0,0,0.2) 0, rgba(0,0,0,0.2) 1px, transparent 1px, transparent 3px); }
+  .vf-corner { position: absolute; width: 22px; height: 22px; border: 0 solid var(--white); }
+  .vf-corner.tl { top: 5px; left: 5px; border-top-width: 3px; border-left-width: 3px; }
+  .vf-corner.tr { top: 5px; right: 5px; border-top-width: 3px; border-right-width: 3px; }
+  .vf-corner.bl { bottom: 5px; left: 5px; border-bottom-width: 3px; border-left-width: 3px; }
+  .vf-corner.br { bottom: 5px; right: 5px; border-bottom-width: 3px; border-right-width: 3px; }
+  .vf-rec, .vf-tc, .vf-date, .vf-batt { position: absolute; background: rgba(0,0,0,0.6); color: var(--white);
+        font-weight: bold; font-size: clamp(0.62rem, 2.6vw, 0.9rem); letter-spacing: 0.1em; line-height: 1.2;
+        padding: 2px 6px; text-shadow: 1px 1px 0 var(--black); }
+  .vf-rec { top: 8px; left: 8px; }
+  .vf-rec .dot { color: var(--red); }
+  .vf-tc { bottom: 8px; left: 8px; }
+  .vf-date { bottom: 8px; right: 8px; }
+  .vf-batt { top: 8px; right: 8px; width: 2.6em; height: 1.35em; padding: 2px; display: flex; gap: 2px;
+             border: 2px solid var(--white); }
+  .vf-batt::after { content: ""; position: absolute; right: -6px; top: 22%; width: 4px; height: 50%; background: var(--white); }
+  .vf-batt i { flex: 1; background: var(--white); }
+  .shot figcaption { padding: 8px 2px 0; }
+  .shot figcaption p { margin: 0 0 4px; text-transform: none; letter-spacing: 0.04em; }
+  .shot figcaption .settings { color: var(--yellow); text-transform: uppercase; letter-spacing: 0.08em; }
+  .actions { margin: 10px 8px 0; }
+  .actions .btn { margin: 0 8px 8px 0; }
+
+  /* ---- motion: only when the visitor has not asked for reduced motion ---- */
+  @media (prefers-reduced-motion: no-preference) {
+    .vf-rec .dot { animation: rec-blink 1.2s steps(1) infinite; }
+    @keyframes rec-blink { 50% { opacity: 0; } }
+  }
+
+  /* ---- phone width ---- */
+  @media (max-width: 700px) {
+    main { padding: 0 12px 40px; }
+    .field { flex-wrap: wrap; }
+    .field .leader { display: none; }
+    .field label { flex: 1 1 calc(100% - 3ch); }
+    .control { flex: 1 1 100%; }
+    .reel { flex-direction: column; overflow-x: visible; }
+    .shot { flex: none; width: 100%; }
+    .vf { padding: 12px; }
+    .shelf { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="osd-bar">
+    <h1>Storyboard Studio</h1>
+    <span class="mode" aria-hidden="true">SP &#9654; PLAY</span>
+  </header>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
