@@ -1,6 +1,6 @@
 """Small pure helpers for the VCR on-screen-display text. No Flask, no I/O."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .presets import SECTION_ORDER
 
@@ -18,12 +18,19 @@ def timecode(index):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}:00"
 
 
-def date_stamp(created_iso):
-    """Camcorder date stamp like 'OCT 29 1996': the real month and day, a fixed year."""
+def date_stamp(created_iso, tz=None):
+    """Camcorder date stamp like 'OCT 29 1996': the real month and day, a fixed year.
+
+    Stored times are UTC; they are converted to tz (default: the machine's local
+    zone) for display only. A naive value is taken to be UTC, as storage writes it.
+    """
     try:
         created = datetime.fromisoformat(created_iso)
     except (TypeError, ValueError):
         return f"--- -- {STAMP_YEAR}"
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    created = created.astimezone(tz)
     return f"{MONTHS[created.month - 1]} {created.day:02d} {STAMP_YEAR}"
 
 

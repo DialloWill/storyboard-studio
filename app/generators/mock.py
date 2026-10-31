@@ -1,6 +1,7 @@
 """Mock generator: a 1280x720 camcorder "no signal" test card. No network."""
 
 import io
+import unicodedata
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -22,6 +23,26 @@ BARS = [
 PROMPT_CHARS = 120
 
 
+TITLE = "NO SIGNAL - MOCK FRAME"
+
+# The bundled default font has no glyphs beyond basic ASCII, so anything else
+# would draw as a missing-glyph box. Map common punctuation, then drop the rest.
+_PUNCT = str.maketrans({
+    "—": "-", "–": "-", "‒": "-", "−": "-",
+    "‘": "'", "’": "'", "‚": "'", "‛": "'",
+    "“": '"', "”": '"', "„": '"',
+    "…": "...", " ": " ", "•": "*",
+})
+
+
+def ascii_text(text):
+    """Text the default font can draw: ASCII only, no control characters."""
+    text = unicodedata.normalize("NFKD", text.translate(_PUNCT))
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return "".join(c if c.isascii() and (c.isprintable() or c == " ") else
+                   (" " if c.isascii() else "?") for c in text)
+
+
 class MockGenerator(ImageGenerator):
     def generate(self, prompt: str) -> bytes:
         image = Image.new("RGB", (WIDTH, HEIGHT), (0, 0, 0))
@@ -33,10 +54,11 @@ class MockGenerator(ImageGenerator):
 
         title_font = ImageFont.load_default(size=40)
         body_font = ImageFont.load_default(size=22)
-        draw.text((60, BARS_HEIGHT + 30), "NO SIGNAL — MOCK FRAME",
+        draw.text((60, BARS_HEIGHT + 30), TITLE,
                   fill=(255, 255, 255), font=title_font)
 
-        snippet = " ".join(prompt.split())[:PROMPT_CHARS]
+        prompt = " ".join(ascii_text(prompt).split())
+        snippet = prompt[:PROMPT_CHARS]
         if len(prompt) > PROMPT_CHARS:
             snippet = snippet.rstrip() + "..."
         # Wrap by measured width so long unbroken words can't run off the card.

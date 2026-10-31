@@ -1,5 +1,6 @@
 import io
 import re
+from datetime import timedelta, timezone
 
 import pytest
 from PIL import Image
@@ -27,8 +28,9 @@ def test_timecode_fields_are_always_valid():
 
 
 def test_date_stamp():
-    assert display.date_stamp("2026-10-29T12:30:00+00:00") == "OCT 29 1996"
-    assert display.date_stamp("2026-01-05T00:00:00+00:00") == "JAN 05 1996"
+    utc = timezone.utc
+    assert display.date_stamp("2026-10-29T12:30:00+00:00", utc) == "OCT 29 1996"
+    assert display.date_stamp("2026-01-05T00:00:00+00:00", utc) == "JAN 05 1996"
     assert display.date_stamp("garbage").endswith("1996")
 
 
@@ -132,3 +134,36 @@ def test_mock_card_has_color_bars_and_black_lower_third():
     lower = img.crop((0, 480, 1280, 720))
     white = lower.convert("L").histogram()[255]
     assert white > 200                                    # caption text was drawn
+
+
+def test_date_stamp_converts_stored_utc_to_display_zone():
+    utc = timezone.utc
+    ny_edt = timezone(timedelta(hours=-4))
+    stored = "2026-10-31T00:20:00Z"
+    assert display.date_stamp(stored, ny_edt) == "OCT 30 1996"
+    assert display.date_stamp(stored, utc) == "OCT 31 1996"
+    # storage writes "+00:00" offsets; same result
+    assert display.date_stamp("2026-10-31T00:20:00.123456+00:00", ny_edt) == "OCT 30 1996"
+
+
+def test_date_stamp_naive_value_is_treated_as_utc():
+    assert display.date_stamp("2026-10-31T00:20:00", timezone(timedelta(hours=-4))) == "OCT 30 1996"
+    assert display.date_stamp("2026-10-31T00:20:00", timezone.utc) == "OCT 31 1996"
+
+
+def test_date_stamp_format_and_year_unchanged():
+    for tz in (timezone.utc, timezone(timedelta(hours=9)), None):
+        assert re.fullmatch(r"[A-Z]{3} \d{2} 1996", display.date_stamp("2031-03-07T10:00:00+00:00", tz))
+
+
+@pytest.mark.parametrize("value", [None, "", "garbage"])
+def test_date_stamp_without_usable_timestamp(value):
+    assert display.date_stamp(value, timezone.utc) == "--- -- 1996"
+    assert display.date_stamp(value) == "--- -- 1996"
+
+
+def test_stored_created_format_is_utc_with_offset(client, board_id, data_dir):
+    from app import storage
+    client.post(f"/storyboards/{board_id}/frames", data=frame_form())
+    created = storage.load_storyboard(data_dir, board_id)["frames"][0]["created"]
+    assert created.endswith("+00:00")

@@ -30,7 +30,7 @@ def _new_id():
 
 def _storyboard_dir(data_dir, storyboard_id):
     """Return the folder for a storyboard id, or None if the id is not valid."""
-    if not isinstance(storyboard_id, str) or not ID_RE.match(storyboard_id):
+    if not is_valid_id(storyboard_id):
         return None
     return Path(data_dir) / storyboard_id
 
@@ -109,6 +109,10 @@ def is_valid_id(value):
     return isinstance(value, str) and ID_RE.fullmatch(value) is not None
 
 
+def is_valid_filename(value):
+    return isinstance(value, str) and FILENAME_RE.fullmatch(value) is not None
+
+
 def add_frame(data_dir, storyboard_id, fields, png_bytes, frame_id=None):
     """Save the PNG, then record the frame in storyboard.json.
 
@@ -145,7 +149,7 @@ def frame_image_path(data_dir, storyboard_id, filename):
     own frame list references (so a real filename under the wrong storyboard
     id is not found).
     """
-    if not isinstance(filename, str) or not FILENAME_RE.match(filename):
+    if not is_valid_filename(filename):
         return None
     board = load_storyboard(data_dir, storyboard_id)
     if board is None:
