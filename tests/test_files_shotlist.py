@@ -83,7 +83,7 @@ def test_shotlist_csv(client, board_id):
     assert resp.mimetype == "text/csv"
     assert "attachment" in resp.headers["Content-Disposition"]
     rows = list(csv.reader(io.StringIO(resp.data.decode("utf-8"))))
-    assert rows[0] == ["section", "scene", "camera", "shot", "lighting", "prompt", "filename"]
+    assert rows[0] == ["section", "scene", "camera", "shot", "lighting", "direction", "prompt", "filename"]
     assert len(rows) == 3
     assert [r[0] for r in rows[1:]] == ["intro", "outro"]
     assert rows[1][1].startswith("'=")

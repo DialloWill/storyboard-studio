@@ -2,7 +2,7 @@
 
 An open-source rebuild of Higgsfield's Cinema Studio, aimed at **music videos**.
 Create a storyboard for a song, add one frame per section (intro, verse, hook,
-bridge, outro), pick a camera, shot and lighting preset, and get a generated
+bridge, outro), pick a camera, shot, lighting and direction preset, and get a generated
 still for each frame. The result is a storyboard row plus a downloadable shot
 list (CSV).
 
@@ -53,7 +53,7 @@ app/
   __init__.py      create_app(config=None) factory
   routes.py        thin Flask routes
   storage.py       all file reads/writes and id/filename validation
-  presets.py       sections, cameras, shots, lighting
+  presets.py       sections, cameras, shots, lighting, direction
   prompt.py        build_prompt(...) pure function
   generators/      ImageGenerator base, MockGenerator, ComfyGenerator stub
   templates/       Jinja templates (inline CSS, no JavaScript)

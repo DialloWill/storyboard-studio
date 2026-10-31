@@ -3,10 +3,11 @@
 from .presets import get_preset
 
 
-def build_prompt(scene, section, camera, shot, lighting):
+def build_prompt(scene, section, camera, shot, lighting, direction="none"):
     """Combine the scene text with the preset fragments into one image prompt.
 
-    section, camera, shot and lighting are preset ids. Unknown ids raise
+    section, camera, shot, lighting and direction are preset ids. An empty
+    fragment (direction "none") adds nothing. Unknown ids raise
     ValueError so a bad id can never silently produce a weaker prompt.
     """
     # Trailing punctuation would produce ".," when joined with the fragments.
@@ -16,6 +17,7 @@ def build_prompt(scene, section, camera, shot, lighting):
         ("shot", shot),
         ("camera", camera),
         ("lighting", lighting),
+        ("direction", direction),
     ):
         preset = get_preset(group, preset_id)
         if preset is None:

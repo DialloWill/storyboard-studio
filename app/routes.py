@@ -36,6 +36,14 @@ def _render_index(error=None, song_title="", status=200):
     ), status
 
 
+def direction_id(frame):
+    """A frame's direction id; missing or no-longer-existing ids read as 'none'."""
+    found = frame.get("direction")
+    if presets.get_preset("direction", found) is None:
+        return presets.DEFAULT_DIRECTION
+    return found
+
+
 def _frame_views(board):
     """Frames in storyboard order, plus the on-screen-display text for each."""
     views = []
@@ -45,6 +53,7 @@ def _frame_views(board):
         views.append({
             **frame,
             "section_name": section_name,
+            "direction": direction_id(frame),
             "channel": display.channel_label(frame["section"], section_name),
             "timecode": display.timecode(index),
             "stamp": display.date_stamp(frame["created"]),
@@ -59,6 +68,7 @@ def _render_board(board, error=None, form=None, status=200):
         "camera": presets.DEFAULT_CAMERA,
         "shot": presets.DEFAULT_SHOT,
         "lighting": presets.DEFAULT_LIGHTING,
+        "direction": presets.DEFAULT_DIRECTION,
     }
     return render_template(
         "storyboard.html",
@@ -102,6 +112,8 @@ def add_frame(storyboard_id):
         "camera": request.form.get("camera", ""),
         "shot": request.form.get("shot", ""),
         "lighting": request.form.get("lighting", ""),
+        # Absent means "none" (older clients); a present but unknown value is rejected.
+        "direction": request.form.get("direction", presets.DEFAULT_DIRECTION),
     }
 
     error = None
@@ -110,7 +122,7 @@ def add_frame(storyboard_id):
     elif len(form["scene"]) > MAX_SCENE:
         error = f"Scene description must be {MAX_SCENE} characters or fewer."
     else:
-        for group in ("section", "camera", "shot", "lighting"):
+        for group in ("section", "camera", "shot", "lighting", "direction"):
             if presets.get_preset(group, form[group]) is None:
                 error = f"Unknown {group} option."
                 break
@@ -118,7 +130,7 @@ def add_frame(storyboard_id):
         return _render_board(board, error, form, 400)
 
     prompt = build_prompt(form["scene"], form["section"], form["camera"],
-                          form["shot"], form["lighting"])
+                          form["shot"], form["lighting"], form["direction"])
     try:
         png = get_generator(current_app.config).generate(prompt)
     except Exception as exc:  # any generator or config failure; never log the key
@@ -161,12 +173,13 @@ def shotlist(storyboard_id):
     board = _get_board_or_404(storyboard_id)
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["section", "scene", "camera", "shot", "lighting", "prompt", "filename"])
+    writer.writerow(["section", "scene", "camera", "shot", "lighting", "direction", "prompt", "filename"])
     for f in storage.sorted_frames(board):
         writer.writerow([
             f["section"],
             _csv_safe(f["scene"]),
             f["camera"], f["shot"], f["lighting"],
+            _csv_safe(direction_id(f)),
             _csv_safe(f["prompt"]),
             f["filename"],
         ])

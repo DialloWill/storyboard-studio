@@ -102,7 +102,7 @@ def sorted_frames(board):
 def add_frame(data_dir, storyboard_id, fields, png_bytes):
     """Save the PNG, then record the frame in storyboard.json.
 
-    fields: section, scene, camera, shot, lighting, prompt.
+    fields: section, scene, camera, shot, lighting, direction, prompt.
     If recording fails, the PNG is removed so no orphan file is left behind.
     """
     board = load_storyboard(data_dir, storyboard_id)
