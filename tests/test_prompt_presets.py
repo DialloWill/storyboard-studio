@@ -37,8 +37,10 @@ def test_no_prompt_contains_4_3():
                 for lighting in presets.LIGHTING:
                     prompt = build_prompt("A scene.", section, camera["id"], shot["id"], lighting["id"])
                     assert "4:3" not in prompt
-    for group in presets.GROUPS.values():
-        assert all("4:3" not in p["fragment"] for p in group)
+    # fx presets are pixel effects with no prompt fragment; they never reach a prompt.
+    for name, group in presets.GROUPS.items():
+        if name != "fx":
+            assert all("4:3" not in p["fragment"] for p in group)
 
 
 def test_build_prompt_rejects_unknown_preset():

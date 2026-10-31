@@ -1,4 +1,4 @@
-"""Preset data for sections, cameras, shots, lighting and direction.
+"""Preset data for sections, cameras, shots, lighting, direction and glitch FX.
 
 Plain data only. Every preset has an id, a display name and a prompt fragment.
 The first entry in CAMERAS, LIGHTING and DIRECTIONS is the default (shots have
@@ -103,12 +103,34 @@ DIRECTIONS = [
                  "intimate close framing, saturated color, lived-in environment, emotional realism"},
 ]
 
+# Glitch FX are pixel post-processing (see fx.py), not prompt text: they carry a
+# description instead of a fragment and never reach build_prompt.
+FX = [
+    {"id": "none", "name": "None",
+     "description": "No post-processing; the image is saved as generated"},
+    {"id": "row-smear", "name": "Row Smear",
+     "description": "Random horizontal bands stretched sideways, with a small red/blue channel offset"},
+    {"id": "prism-zoom", "name": "Prism Zoom",
+     "description": "Radial zoom blur from the center with split color channels and rainbow edge fringing"},
+    {"id": "signal-drip", "name": "Signal Drip",
+     "description": "Bright pixels streak downward in each column, producing melting vertical drips"},
+    {"id": "burst", "name": "Burst",
+     "description": "Blocky radial stretch outward from the center, leaving the middle mostly intact"},
+    {"id": "band-shift", "name": "Band Shift",
+     "description": "Horizontal bands shifted left and right, with a few thin bands color-split"},
+    {"id": "tape-decay", "name": "Tape Decay",
+     "description": "Repeated low-quality compression, coarse blocks, light posterize and a faint ghost"},
+    {"id": "sky-smear", "name": "Sky Smear",
+     "description": "Row smear applied only to the bright regions; darker areas stay clean"},
+]
+
 GROUPS = {
     "section": SECTIONS,
     "camera": CAMERAS,
     "shot": SHOTS,
     "lighting": LIGHTING,
     "direction": DIRECTIONS,
+    "fx": FX,
 }
 
 DEFAULT_SECTION = SECTIONS[0]["id"]
@@ -116,6 +138,7 @@ DEFAULT_CAMERA = CAMERAS[0]["id"]
 DEFAULT_SHOT = "close-up"
 DEFAULT_LIGHTING = LIGHTING[0]["id"]
 DEFAULT_DIRECTION = "none"
+DEFAULT_FX = "none"
 
 SECTION_ORDER = [s["id"] for s in SECTIONS]
 

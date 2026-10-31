@@ -165,7 +165,7 @@ def test_no_banned_names_in_any_preset():
     hits = []
     for group, items in presets.GROUPS.items():
         for preset in items:
-            for field in ("id", "name", "fragment"):
+            for field in ("id", "name", "fragment", "description"):
                 for term, pattern in patterns:
                     if pattern.search(str(preset.get(field, ""))):
                         hits.append(f"{group}/{preset['id']}.{field} contains {term!r}")

@@ -99,18 +99,32 @@ def sorted_frames(board):
     return sorted(board["frames"], key=key)
 
 
-def add_frame(data_dir, storyboard_id, fields, png_bytes):
+def new_id():
+    """A fresh uuid4 hex id (for callers that need a frame id before saving)."""
+    return _new_id()
+
+
+def is_valid_id(value):
+    # fullmatch: ID_RE's "$" would also accept a trailing newline.
+    return isinstance(value, str) and ID_RE.fullmatch(value) is not None
+
+
+def add_frame(data_dir, storyboard_id, fields, png_bytes, frame_id=None):
     """Save the PNG, then record the frame in storyboard.json.
 
-    fields: section, scene, camera, shot, lighting, direction, prompt.
+    fields: section, scene, camera, shot, lighting, direction, fx, prompt.
+    frame_id: optional pre-minted id (the fx seed comes from it); must be a
+    32-char lowercase hex id or ValueError is raised before anything is written.
     If recording fails, the PNG is removed so no orphan file is left behind.
     """
+    if frame_id is not None and not is_valid_id(frame_id):
+        raise ValueError("Invalid frame id")
     board = load_storyboard(data_dir, storyboard_id)
     if board is None:
         raise FileNotFoundError(storyboard_id)
     folder = _storyboard_dir(data_dir, storyboard_id)
     frame = dict(fields)
-    frame["id"] = _new_id()
+    frame["id"] = frame_id if frame_id is not None else _new_id()
     frame["filename"] = _new_id() + ".png"
     frame["created"] = _now()
     image_path = folder / frame["filename"]

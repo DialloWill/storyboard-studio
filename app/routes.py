@@ -4,7 +4,9 @@ import io
 from flask import (Blueprint, Response, abort, current_app, redirect,
                    render_template, request, send_file, url_for)
 
-from . import display, presets, storage
+from PIL import Image
+
+from . import display, fx, presets, storage
 from .generators import get_generator
 from .prompt import build_prompt
 
@@ -44,6 +46,26 @@ def direction_id(frame):
     return found
 
 
+def fx_id(frame):
+    """A frame's glitch FX id; missing or no-longer-existing ids read as 'none'."""
+    found = frame.get("fx")
+    if presets.get_preset("fx", found) is None:
+        return presets.DEFAULT_FX
+    return found
+
+
+def _apply_fx(png, fx_name, frame_id):
+    """Run a glitch effect over generated PNG bytes; "none" returns them untouched."""
+    if fx_name == presets.DEFAULT_FX:
+        return png
+    with Image.open(io.BytesIO(png)) as source:
+        image = source.convert("RGB")
+    result = fx.apply_fx(image, fx_name, fx.seed_from_frame_id(frame_id))
+    out = io.BytesIO()
+    result.save(out, format="PNG")
+    return out.getvalue()
+
+
 def _frame_views(board):
     """Frames in storyboard order, plus the on-screen-display text for each."""
     views = []
@@ -54,6 +76,7 @@ def _frame_views(board):
             **frame,
             "section_name": section_name,
             "direction": direction_id(frame),
+            "fx": fx_id(frame),
             "channel": display.channel_label(frame["section"], section_name),
             "timecode": display.timecode(index),
             "stamp": display.date_stamp(frame["created"]),
@@ -69,6 +92,7 @@ def _render_board(board, error=None, form=None, status=200):
         "shot": presets.DEFAULT_SHOT,
         "lighting": presets.DEFAULT_LIGHTING,
         "direction": presets.DEFAULT_DIRECTION,
+        "fx": presets.DEFAULT_FX,
     }
     return render_template(
         "storyboard.html",
@@ -114,6 +138,7 @@ def add_frame(storyboard_id):
         "lighting": request.form.get("lighting", ""),
         # Absent means "none" (older clients); a present but unknown value is rejected.
         "direction": request.form.get("direction", presets.DEFAULT_DIRECTION),
+        "fx": request.form.get("fx", presets.DEFAULT_FX),
     }
 
     error = None
@@ -122,7 +147,7 @@ def add_frame(storyboard_id):
     elif len(form["scene"]) > MAX_SCENE:
         error = f"Scene description must be {MAX_SCENE} characters or fewer."
     else:
-        for group in ("section", "camera", "shot", "lighting", "direction"):
+        for group in ("section", "camera", "shot", "lighting", "direction", "fx"):
             if presets.get_preset(group, form[group]) is None:
                 error = f"Unknown {group} option."
                 break
@@ -131,13 +156,16 @@ def add_frame(storyboard_id):
 
     prompt = build_prompt(form["scene"], form["section"], form["camera"],
                           form["shot"], form["lighting"], form["direction"])
+    frame_id = storage.new_id()  # minted first: the fx seed is derived from it
     try:
         png = get_generator(current_app.config).generate(prompt)
+        png = _apply_fx(png, form["fx"], frame_id)
     except Exception as exc:  # any generator or config failure; never log the key
         current_app.logger.error("Image generation failed: %s: %s", type(exc).__name__, exc)
         return _render_board(board, GENERATION_FAILED, form, 502)
 
-    storage.add_frame(_data_dir(), storyboard_id, {**form, "prompt": prompt}, png)
+    storage.add_frame(_data_dir(), storyboard_id, {**form, "prompt": prompt}, png,
+                      frame_id=frame_id)
     return redirect(url_for("main.show_storyboard", storyboard_id=storyboard_id))
 
 
@@ -173,13 +201,14 @@ def shotlist(storyboard_id):
     board = _get_board_or_404(storyboard_id)
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["section", "scene", "camera", "shot", "lighting", "direction", "prompt", "filename"])
+    writer.writerow(["section", "scene", "camera", "shot", "lighting", "direction", "fx", "prompt", "filename"])
     for f in storage.sorted_frames(board):
         writer.writerow([
             f["section"],
             _csv_safe(f["scene"]),
             f["camera"], f["shot"], f["lighting"],
             _csv_safe(direction_id(f)),
+            _csv_safe(fx_id(f)),
             _csv_safe(f["prompt"]),
             f["filename"],
         ])

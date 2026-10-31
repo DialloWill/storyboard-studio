@@ -60,7 +60,7 @@
       </div>
       <figcaption>
         <p>{{ f.scene }}</p>
-        <p class="settings">{{ names.camera.get(f.camera, f.camera) }} &middot; {{ names.shot.get(f.shot, f.shot) }} &middot; {{ names.lighting.get(f.lighting, f.lighting) }}{% if f.direction != "none" %} &middot; {{ names.direction[f.direction] }}{% endif %}</p>
+        <p class="settings">{{ names.camera.get(f.camera, f.camera) }} &middot; {{ names.shot.get(f.shot, f.shot) }} &middot; {{ names.lighting.get(f.lighting, f.lighting) }}{% if f.direction != "none" %} &middot; {{ names.direction[f.direction] }}{% endif %}{% if f.fx != "none" %} &middot; {{ names.fx[f.fx] }}{% endif %}</p>
         <a href="{{ url_for('main.frame_download', storyboard_id=board.id, filename=f.filename) }}">Download PNG</a>
       </figcaption>
     </figure>
@@ -85,6 +85,7 @@
       {{ shot_select(form.shot) }}
       {{ select("lighting", "Lighting", presets.LIGHTING, form.lighting) }}
       {{ select("direction", "Direction", presets.DIRECTIONS, form.direction) }}
+      {{ select("fx", "Glitch FX", presets.FX, form.fx) }}
       <div class="field stack">
         <span class="mark" aria-hidden="true">&#9654;</span>
         <label for="scene">Scene description</label>
