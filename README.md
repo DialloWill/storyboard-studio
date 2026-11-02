@@ -1,17 +1,10 @@
 # Storyboard Studio
 
-An open-source rebuild of Higgsfield's Cinema Studio, aimed at **music videos**.
-Create a storyboard for a song, add one frame per section (intro, verse, hook,
-bridge, outro), pick a camera, shot, lighting and direction preset, and get a generated
-still for each frame. The result is a storyboard row plus a downloadable shot
-list (CSV).
+An open-source rebuild of Higgsfield's Cinema Studio, aimed at **music videos**. Create a storyboard for a song, add one frame per section (intro, verse, hook, bridge, outro), pick a camera, shot, lighting and direction preset, and get a generated still for each frame. The result is a storyboard row plus a downloadable shot list (CSV). The interface is styled like a 1990s VHS camcorder.
 
 Built for the ComfyUI "Open Source Higgsfield" Build Night. **#OpenSourceHiggsfield**
 
-> Status: runs end to end against a **mock** image generator (placeholder
-> frames). The Comfy Cloud API v2 generator is implemented at build night.
-
-![Screenshot placeholder](docs/screenshot.png)
+> Status: runs end to end against a **mock** image generator (placeholder frames). The Comfy Cloud generator is a stub and is not connected yet.
 
 ## Setup (Windows PowerShell)
 
@@ -22,27 +15,21 @@ Copy-Item .env.example .env
 .venv\Scripts\python -m flask --app app run
 ```
 
-Then open http://127.0.0.1:5000. You don't need to activate the venv; calling
-`.venv\Scripts\python` directly avoids PowerShell execution-policy issues.
+Then open http://127.0.0.1:5000. You don't need to activate the venv; calling `.venv\Scripts\python` directly avoids PowerShell execution-policy issues.
 
-Dependencies are pinned in `requirements.txt`. That includes **numpy**, which
-the Glitch FX use for pixel work; it is installed by the command above.
+Dependencies are pinned in `requirements.txt`. That includes **numpy**, which the Glitch FX use for pixel work; it is installed by the command above.
 
 ## Direction and Glitch FX
 
-Two optional groups sit beside camera, shot and lighting. Both default to
-**None**, which leaves a frame exactly as before.
+Two optional groups sit beside camera, shot and lighting. Both default to **None**, which leaves a frame exactly as before.
 
-**Direction** adds composition, lighting and mood wording to the prompt, so it
-shapes what the generator draws:
+**Direction** adds composition, lighting and mood wording to the prompt, so it shapes what the generator draws:
 
 - **Monumental**: centered subject, huge scale, deep staging, cool muted tones.
 - **One-Point Symmetry**: one-point perspective, mirrored composition, still and cold.
 - **Warm Intimate**: close framing, warm practical light, rich skin tones.
 
-**Glitch FX** are real pixel post-processing applied to the image *after* it is
-generated. They never touch the prompt, and each frame's effect is seeded from
-its id, so a frame always gets the same glitch.
+**Glitch FX** are real pixel post-processing applied to the image *after* it is generated. They never touch the prompt, and each frame's effect is seeded from its id, so a frame always gets the same glitch.
 
 - **Smear and stretch**: Row Smear (sideways bands), Sky Smear (the same, bright areas only), Burst (radial stretch from the center).
 - **Color and optics**: Prism Zoom (radial blur with split color channels).
@@ -65,9 +52,13 @@ GENERATOR=comfy
 COMFY_API_KEY=your-key-here
 ```
 
-Until the integration is written (build night), generating a frame with
-`GENERATOR=comfy` shows "Image generation failed" and saves nothing. Never
-commit `.env`.
+The Comfy generator is a stub until the integration is written. Until then, generating a frame with `GENERATOR=comfy` shows "Image generation failed" and saves nothing. Never commit `.env`.
+
+## Roadmap
+
+- Connect the Comfy generator
+- Configurable Comfy base URL
+- Audio analysis
 
 ## Project structure
 
@@ -83,7 +74,7 @@ app/
   generators/      ImageGenerator base, MockGenerator, ComfyGenerator stub
   templates/       Jinja templates (inline CSS, no JavaScript)
 tests/             pytest suite
-workflows/         ComfyUI workflow JSON (added at build night)
+workflows/         ComfyUI workflow JSON (placeholder)
 data/              storyboards on disk (created at runtime, git-ignored)
 ```
 
