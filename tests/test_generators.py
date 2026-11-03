@@ -34,11 +34,8 @@ def test_comfy_requires_key(monkeypatch):
         get_generator({"GENERATOR": "comfy", "COMFY_API_KEY": ""})
 
 
-def test_comfy_generate_not_implemented():
-    gen = ComfyGenerator("test-key-not-real")
-    assert isinstance(gen, ImageGenerator)
-    with pytest.raises(NotImplementedError, match="implemented at build night"):
-        gen.generate("x")
+def test_comfy_is_an_image_generator():
+    assert isinstance(ComfyGenerator("test-key-not-real"), ImageGenerator)
 
 
 @pytest.mark.parametrize("scene", [

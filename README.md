@@ -4,7 +4,7 @@ An open-source rebuild of Higgsfield's Cinema Studio, aimed at **music videos**.
 
 Built for the ComfyUI "Open Source Higgsfield" Build Night. **#OpenSourceHiggsfield**
 
-> Status: runs end to end against a **mock** image generator (placeholder frames). The Comfy Cloud generator is a stub and is not connected yet.
+> Status: runs end to end against a **mock** image generator (placeholder frames) by default. The Comfy generator calls `bfl/flux-3-image` through the Comfy Router to produce real frames.
 
 ## Setup (Windows PowerShell)
 
@@ -52,11 +52,10 @@ GENERATOR=comfy
 COMFY_API_KEY=your-key-here
 ```
 
-The Comfy generator is a stub until the integration is written. Until then, generating a frame with `GENERATOR=comfy` shows "Image generation failed" and saves nothing. Never commit `.env`.
+The Comfy generator calls `bfl/flux-3-image` through the Comfy Router (16:9, 1k). If a request fails (bad key, no credits, moderation, timeout), the app shows "Image generation failed" and saves nothing. Never commit `.env`.
 
 ## Roadmap
 
-- Connect the Comfy generator
 - Configurable Comfy base URL
 - Audio analysis
 
@@ -71,10 +70,10 @@ app/
   fx.py            Glitch FX pixel post-processing (numpy)
   display.py       viewfinder text: timecode, date stamp, channel label
   prompt.py        build_prompt(...) pure function
-  generators/      ImageGenerator base, MockGenerator, ComfyGenerator stub
+  generators/      ImageGenerator base, MockGenerator, ComfyGenerator
   templates/       Jinja templates (inline CSS, no JavaScript)
 tests/             pytest suite
-workflows/         ComfyUI workflow JSON (placeholder)
+workflows/         not used: the Router calls the model directly, so no workflow file is needed
 data/              storyboards on disk (created at runtime, git-ignored)
 ```
 

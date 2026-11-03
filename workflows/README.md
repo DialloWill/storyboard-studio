@@ -1,4 +1,3 @@
 # Workflows
 
-Placeholder. The ComfyUI text-to-image workflow JSON is added at build night,
-together with the Comfy Cloud API v2 integration in `app/generators/comfy.py`.
+Not used. The Comfy generator calls the model directly through the Comfy Router (see `app/generators/comfy.py`), so no workflow file is needed.
