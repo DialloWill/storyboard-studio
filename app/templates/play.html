@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Play tape - Storyboard Studio{% endblock %}
+
+{% block content %}
+<p><a href="{{ url_for('main.show_storyboard', storyboard_id=board.id) }}">&#9664; Back to tape</a></p>
+<h2 class="page-title">{{ board.song_title }}</h2>
+
+<section class="menu">
+  <h2 class="menu-title">Play tape</h2>
+  <div class="menu-body">
+    {% if error %}<div class="error" role="alert"><p class="warn-head">!! TRACKING ERROR !!</p><p>{{ error }}</p></div>{% endif %}
+
+    {% if state == "empty" %}
+    <p class="notice">Tape is blank. Add a frame, then come back to play it.</p>
+    {% else %}
+      {% if state == "fresh" %}
+      <div class="vf clip">
+        <div class="vf-screen">
+          <video controls preload="metadata" playsinline
+                 src="{{ url_for('main.tape_clip', storyboard_id=board.id) }}">
+            Your browser cannot play this tape.
+          </video>
+          <div class="vf-scan" aria-hidden="true"></div>
+        </div>
+        <span class="vf-corner tl" aria-hidden="true"></span>
+        <span class="vf-corner tr" aria-hidden="true"></span>
+        <span class="vf-corner bl" aria-hidden="true"></span>
+        <span class="vf-corner br" aria-hidden="true"></span>
+      </div>
+      {% elif state == "stale" %}
+      <p class="notice">!! STALE !! Frames or camera moves changed since this tape was exported. Export again to update it.</p>
+      {% elif state == "missing" %}
+      <p class="notice">!! IMAGE MISSING !! A frame's picture is not on disk, so the tape cannot be exported.</p>
+      {% else %}
+      <p class="notice">Not exported yet. {{ count }} frame{{ "" if count == 1 else "s" }}, about {{ seconds }} seconds, in storyboard order.</p>
+      {% endif %}
+      {% if state != "fresh" and state != "missing" %}
+      <form method="post" action="{{ url_for('main.play_tape', storyboard_id=board.id) }}">
+        <button class="btn" type="submit"><span class="rec">&#9654;</span> {{ "Re-export tape" if state == "stale" else "Export tape" }}</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

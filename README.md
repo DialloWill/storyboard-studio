@@ -38,13 +38,25 @@ Two optional groups sit beside camera, shot and lighting. Both default to **None
 - **Color and optics**: Prism Zoom (radial blur with split color channels).
 - **Signal and tape**: Signal Drip (bright pixels melt downward), Band Shift (bands slide left and right), Tape Decay (compression blocks, posterize, faint ghost).
 
+## Animated clips and Play tape
+
+Every frame has an **Animate** control. It makes a 3 second clip (640x360, 15 fps, H.264 MP4) from the frame's existing picture, fully offline: nothing is regenerated and the picture is never modified.
+
+- **Camera move**: Static, Slow zoom in, Slow zoom out, Pan left/right, Tilt up/down. Eased, and never shows an edge. Frames with no stored move use Slow zoom in. A move is saved on the frame only when you pick one.
+- **Glitch FX** builds in and fades out over the clip, and every clip gets a VHS treatment (scanlines, rolling tracking band, jitter, chroma bleed, noise). All randomness is seeded from the frame id, so a clip is reproducible.
+- **Play tape** joins the frames in storyboard order into one video, with a short VHS tracking glitch between frames.
+- Clips live in `data/<tape>/clips/`. A clip or export is rebuilt only when something it depends on changed (the picture, its FX, its camera move, or the frame list); until you re-animate, a changed one shows as STALE instead of playing old content. Renaming a tape changes nothing.
+- Each rendering takes a few seconds per frame on a laptop CPU; a 10-frame tape takes about a minute.
+
+Encoding uses ffmpeg. `pip install -r requirements.txt` installs **imageio-ffmpeg**, which bundles an ffmpeg binary; that is used first, and an `ffmpeg` on your PATH is only a fallback. The bundled binary is a GPLv3 build (`--enable-gpl`, includes libx264). It is installed from PyPI at setup, not vendored into this repository, so it does not change this project's MIT license.
+
 ## Running tests
 
 ```powershell
 .venv\Scripts\python -m pytest -v
 ```
 
-No test touches the network or reads your `.env`.
+No test touches the network or reads your `.env`. The clip tests use a fake encoder; the two tests that run real ffmpeg skip themselves when no ffmpeg is available.
 
 ## Switching to the Comfy generator
 
@@ -59,7 +71,8 @@ The Comfy generator sends each frame's prompt to `bfl/flux-3-image` through the 
 
 ## Roadmap
 
-- Animate storyboard frames into short clips
+- AI video clips (hosted ComfyUI) mixed into Play tape
+- Mux a song under the tape
 - Configurable model choice
 - Audio analysis
 
@@ -72,6 +85,8 @@ app/
   storage.py       all file reads/writes and id/filename validation
   presets.py       sections, cameras, shots, lighting, direction, glitch FX
   fx.py            Glitch FX pixel post-processing (numpy)
+  motion.py        camera moves (allowlist, easing, crop windows)
+  clips/           animated clips: render, VHS pass, encoders (ffmpeg), fingerprints
   display.py       viewfinder text: timecode, date stamp, channel label
   prompt.py        build_prompt(...) pure function
   generators/      ImageGenerator base, MockGenerator, ComfyGenerator (Comfy Router, FLUX 3)

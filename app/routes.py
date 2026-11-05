@@ -6,7 +6,9 @@ from flask import (Blueprint, Response, abort, current_app, redirect,
 
 from PIL import Image
 
-from . import display, fx, presets, storage
+from . import clips, display, fx, motion, presets, storage
+from .clips import settings as clip_settings
+from .clips.encoders import get_encoder
 from .generators import get_generator
 from .prompt import build_prompt
 
@@ -86,6 +88,9 @@ def _frame_views(board):
             "section_name": section_name,
             "direction": direction_id(frame),
             "fx": fx_id(frame),
+            "move_name": motion.MOVE_NAMES[motion.resolve_move(frame.get("camera_move"))],
+            "move_explicit": motion.is_valid_move(frame.get("camera_move")),
+            "clip_state": clips.frame_state(_data_dir(), board["id"], frame)[0],
             "channel": display.channel_label(frame["section"], section_name),
             "timecode": display.timecode(index),
             "stamp": display.date_stamp(frame["created"]),
@@ -102,11 +107,15 @@ def _render_board(board, error=None, form=None, status=200):
         "lighting": presets.DEFAULT_LIGHTING,
         "direction": presets.DEFAULT_DIRECTION,
         "fx": presets.DEFAULT_FX,
+        "camera_move": "",
     }
     return render_template(
         "storyboard.html",
         board=board,
         frames=_frame_views(board),
+        moves=motion.MOVES,
+        default_move_name=motion.MOVE_NAMES[motion.DEFAULT_MOVE],
+        tape_state=clips.tape_state(_data_dir(), board["id"], board)[0],
         error=error,
         form=form,
         presets=presets,
@@ -149,6 +158,9 @@ def add_frame(storyboard_id):
         "fx": request.form.get("fx", presets.DEFAULT_FX),
     }
 
+    # Empty means "default move": nothing is stored unless the user explicitly picks one.
+    move = request.form.get("camera_move", "")
+
     error = None
     if not form["scene"]:
         error = "Scene description is required."
@@ -159,8 +171,10 @@ def add_frame(storyboard_id):
             if presets.get_preset(group, form[group]) is None:
                 error = f"Unknown {group} option."
                 break
+        if error is None and move and not motion.is_valid_move(move):
+            error = "Unknown camera move option."
     if error:
-        return _render_board(board, error, form, 400)
+        return _render_board(board, error, {**form, "camera_move": move}, 400)
 
     prompt = build_prompt(form["scene"], form["section"], form["camera"],
                           form["shot"], form["lighting"], form["direction"])
@@ -172,8 +186,10 @@ def add_frame(storyboard_id):
         current_app.logger.error("Image generation failed: %s: %s", type(exc).__name__, exc)
         return _render_board(board, GENERATION_FAILED, form, 502)
 
-    storage.add_frame(_data_dir(), storyboard_id, {**form, "prompt": prompt}, png,
-                      frame_id=frame_id)
+    fields = {**form, "prompt": prompt}
+    if move:
+        fields["camera_move"] = move
+    storage.add_frame(_data_dir(), storyboard_id, fields, png, frame_id=frame_id)
     return redirect(url_for("main.show_storyboard", storyboard_id=storyboard_id))
 
 
@@ -258,7 +274,14 @@ def delete_storyboard(storyboard_id):
             question=f"Erase tape “{board['song_title']}” and its {len(board['frames'])} frame(s)?",
             action=url_for("main.delete_storyboard", storyboard_id=storyboard_id),
             cancel=url_for("main.show_storyboard", storyboard_id=storyboard_id))
-    if not storage.trash_storyboard(_data_dir(), storyboard_id):
+    try:
+        trashed = storage.trash_storyboard(_data_dir(), storyboard_id)
+    except PermissionError:
+        # Windows refuses to rename a folder while a browser holds a clip inside it open.
+        return render_template(
+            "error.html", message="This tape could not be erased because a video from it "
+            "is still open. Close the video tab, then try again."), 409
+    if not trashed:
         abort(404)
     return redirect(url_for("main.index"))
 
@@ -280,3 +303,115 @@ def delete_frame(storyboard_id, frame_id):
     if not storage.trash_frame(_data_dir(), storyboard_id, frame_id):
         abort(404)
     return redirect(back)
+
+
+# ---- animated clips ---------------------------------------------------------------
+
+def _frame_or_404(board, frame_id):
+    frame = next((f for f in board["frames"]
+                  if storage.is_valid_id(frame_id) and f.get("id") == frame_id), None)
+    if frame is None:
+        abort(404)
+    return frame
+
+
+def _clip_failure(exc):
+    """(message, status) for any failure while making a clip; never echoes internals."""
+    if isinstance(exc, clips.ClipError):
+        if not isinstance(exc, clips.EncodeError):
+            return exc.message, exc.status
+        current_app.logger.error("Clip encoding failed: %s", exc.message)
+    else:
+        current_app.logger.error("Clip rendering failed: %s: %s", type(exc).__name__, exc)
+    return "Clip rendering failed. Nothing was saved.", 502
+
+
+def _render_animate(storyboard_id, frame_id, error=None, status=200):
+    board = _get_board_or_404(storyboard_id)
+    frame = _frame_or_404(board, frame_id)
+    state = clips.frame_state(_data_dir(), storyboard_id, frame)[0]
+    section = presets.get_preset("section", frame["section"])
+    return render_template(
+        "animate.html",
+        board=board,
+        frame=frame,
+        section_name=section["name"] if section else frame["section"],
+        fx_name=presets.get_preset("fx", fx_id(frame))["name"],
+        move_name=motion.MOVE_NAMES[motion.resolve_move(frame.get("camera_move"))],
+        move_explicit=motion.is_valid_move(frame.get("camera_move")),
+        default_move_name=motion.MOVE_NAMES[motion.DEFAULT_MOVE],
+        moves=motion.MOVES,
+        state=state,
+        error=error,
+        duration=clip_settings.DURATION,
+    ), status
+
+
+@bp.route("/storyboards/<storyboard_id>/frames/<frame_id>/animate", methods=["GET", "POST"])
+def animate_frame(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    _frame_or_404(board, frame_id)
+    if request.method == "GET":
+        return _render_animate(storyboard_id, frame_id)
+    move = request.form.get("camera_move", "")  # empty = keep the frame's current move
+    if move and not motion.is_valid_move(move):
+        return _render_animate(storyboard_id, frame_id, "Unknown camera move option.", 400)
+    try:
+        clips.animate_frame(_data_dir(), storyboard_id, frame_id,
+                            get_encoder(current_app.config), move or None)
+    except Exception as exc:
+        message, status = _clip_failure(exc)
+        return _render_animate(storyboard_id, frame_id, message, status)
+    return redirect(url_for("main.animate_frame", storyboard_id=storyboard_id, frame_id=frame_id))
+
+
+@bp.post("/storyboards/<storyboard_id>/frames/<frame_id>/move")
+def set_move(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    _frame_or_404(board, frame_id)
+    move = request.form.get("camera_move", "")
+    if not motion.is_valid_move(move):
+        return _render_animate(storyboard_id, frame_id, "Pick a camera move from the list.", 400)
+    storage.set_camera_move(_data_dir(), storyboard_id, frame_id, move)
+    return redirect(url_for("main.animate_frame", storyboard_id=storyboard_id, frame_id=frame_id))
+
+
+@bp.get("/storyboards/<storyboard_id>/frames/<frame_id>/animate/clip")
+def frame_clip(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    frame = _frame_or_404(board, frame_id)
+    state, path = clips.frame_state(_data_dir(), storyboard_id, frame)
+    if state != "fresh":
+        abort(404)  # never serve a clip that no longer matches the frame
+    return send_file(path, mimetype=clip_settings.MIMETYPE, conditional=True)
+
+
+def _render_play(board, error=None, status=200):
+    state = clips.tape_state(_data_dir(), board["id"], board)[0]
+    count = len(board["frames"])
+    seconds = count * clip_settings.DURATION + max(0, count - 1) * (
+        clip_settings.TRANSITION_FRAMES / clip_settings.FPS)
+    return render_template("play.html", board=board, state=state, count=count,
+                           seconds=round(seconds, 1), error=error), status
+
+
+@bp.route("/storyboards/<storyboard_id>/play", methods=["GET", "POST"])
+def play_tape(storyboard_id):
+    board = _get_board_or_404(storyboard_id)
+    if request.method == "GET":
+        return _render_play(board)
+    try:
+        clips.export_tape(_data_dir(), storyboard_id, get_encoder(current_app.config))
+    except Exception as exc:
+        message, status = _clip_failure(exc)
+        return _render_play(board, message, status)
+    return redirect(url_for("main.play_tape", storyboard_id=storyboard_id))
+
+
+@bp.get("/storyboards/<storyboard_id>/play/clip")
+def tape_clip(storyboard_id):
+    board = _get_board_or_404(storyboard_id)
+    state, path = clips.tape_state(_data_dir(), storyboard_id, board)
+    if state != "fresh":
+        abort(404)
+    return send_file(path, mimetype=clip_settings.MIMETYPE, conditional=True)

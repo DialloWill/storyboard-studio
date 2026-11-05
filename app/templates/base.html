@@ -120,8 +120,10 @@
   .empty { margin: 8px; }
 
   /* ---- viewfinder reel ---- */
-  .reel { display: flex; gap: 20px; overflow-x: auto; padding: 4px 4px 14px; }
-  .shot { flex: 0 0 min(460px, 92%); margin: 0; min-width: 0; }
+  /* Wrapping grid, row-major in DOM (= sorted_frames) order. min(100%, ...) keeps one column from overflowing narrow windows. */
+  .reel { display: grid; gap: 20px; padding: 4px 4px 14px;
+          grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+  .shot { margin: 0; min-width: 0; }
   .shot .ch { color: var(--yellow); font-weight: bold; margin-bottom: 6px; letter-spacing: 0.15em; }
   .vf { position: relative; background: var(--black); padding: 18px; }
   .vf-screen { position: relative; }
@@ -147,6 +149,13 @@
   .shot figcaption { padding: 8px 2px 0; }
   .shot figcaption p { margin: 0 0 4px; text-transform: none; letter-spacing: 0.04em; }
   .shot figcaption .settings { color: var(--yellow); text-transform: uppercase; letter-spacing: 0.08em; }
+  .vf-screen video { display: block; width: 100%; aspect-ratio: 16 / 9; background: var(--black); }
+  .vf.clip { margin: 0 0 16px; max-width: 720px; }
+  .notice { border: 2px solid var(--yellow); color: var(--yellow); padding: 8px 12px; margin: 0 0 16px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .clip-form { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .clip-form .control { flex: 1 1 140px; min-width: 0; max-width: 100%; }
+  .clip-form .btn { margin: 0; }
   .actions { margin: 10px 8px 0; }
   .actions .btn { margin: 0 8px 8px 0; }
 
@@ -163,8 +172,7 @@
     .field .leader { display: none; }
     .field label { flex: 1 1 calc(100% - 3ch); }
     .control { flex: 1 1 100%; }
-    .reel { flex-direction: column; overflow-x: visible; }
-    .shot { flex: none; width: 100%; }
+    .reel { grid-template-columns: 1fr; }
     .vf { padding: 12px; }
     .shelf { grid-template-columns: 1fr; }
   }

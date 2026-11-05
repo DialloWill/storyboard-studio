@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Animate frame - Storyboard Studio{% endblock %}
+
+{% block content %}
+<p><a href="{{ url_for('main.show_storyboard', storyboard_id=board.id) }}">&#9664; Back to tape</a></p>
+<h2 class="page-title">{{ board.song_title }}</h2>
+
+<section class="menu">
+  <h2 class="menu-title">Animate frame</h2>
+  <div class="menu-body">
+    {% if error %}<div class="error" role="alert"><p class="warn-head">!! TRACKING ERROR !!</p><p>{{ error }}</p></div>{% endif %}
+    <p>{{ frame.scene }}</p>
+    <p class="settings">{{ section_name }} &middot; FX: {{ fx_name }} &middot; Move: {{ move_name }}{% if not move_explicit %} (default){% endif %}</p>
+
+    {% if state == "fresh" %}
+    <div class="vf clip">
+      <div class="vf-screen">
+        <video controls preload="metadata" playsinline loop
+               src="{{ url_for('main.frame_clip', storyboard_id=board.id, frame_id=frame.id) }}">
+          Your browser cannot play this clip.
+        </video>
+        <div class="vf-scan" aria-hidden="true"></div>
+      </div>
+      <span class="vf-corner tl" aria-hidden="true"></span>
+      <span class="vf-corner tr" aria-hidden="true"></span>
+      <span class="vf-corner bl" aria-hidden="true"></span>
+      <span class="vf-corner br" aria-hidden="true"></span>
+    </div>
+    {% elif state == "stale" %}
+    <p class="notice">!! STALE !! This frame changed after its clip was made. Animate again to update it.</p>
+    {% elif state == "missing" %}
+    <p class="notice">!! IMAGE MISSING !! This frame's picture is not on disk, so it cannot be animated.</p>
+    {% else %}
+    <p class="notice">No clip yet. About {{ duration|round|int }} seconds, made from the existing picture.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('main.animate_frame', storyboard_id=board.id, frame_id=frame.id) }}">
+      <div class="field">
+        <span class="mark" aria-hidden="true">&#9654;</span>
+        <label for="camera_move">Camera move</label>
+        <span class="leader" aria-hidden="true"></span>
+        <select class="control" id="camera_move" name="camera_move">
+          <option value="" selected>Keep current ({{ move_name }})</option>
+          {% for m in moves %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn" type="submit"><span class="rec">&#9654;</span> Animate</button>
+      <button class="btn" type="submit"
+              formaction="{{ url_for('main.set_move', storyboard_id=board.id, frame_id=frame.id) }}">Save move only</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

@@ -217,7 +217,111 @@ def trash_frame(data_dir, storyboard_id, frame_id):
         except OSError:
             pass
         raise
+    _trash_clip_files(folder / CLIPS_DIR, frame_id, target)
     return True
+
+
+def _trash_clip_files(clips, frame_id, target):
+    """Best effort: a clip the browser still holds open must not block erasing the frame."""
+    for path in clips.glob(f"{frame_id}.*"):
+        try:
+            os.replace(path, target / path.name)
+        except OSError:
+            pass
+
+
+# ---- animated clips: data/<tape>/clips/ ----------------------------------------
+# Every clip is written under a NEW name (<key>.<fingerprint12>.mp4) because
+# Windows will not replace a file a browser has open. <key>.json is the commit
+# marker: it names the current clip file and the fingerprint it was made from.
+
+CLIPS_DIR = "clips"
+TAPE_KEY = "tape"
+FRAME_CLIP_RE = re.compile(r"^[0-9a-f]{32}\.[0-9a-f]{12}\.mp4$")
+TAPE_CLIP_RE = re.compile(r"^tape\.[0-9a-f]{12}\.mp4$")
+
+
+def _clip_key_ok(key):
+    return key == TAPE_KEY or is_valid_id(key)
+
+
+def set_camera_move(data_dir, storyboard_id, frame_id, move):
+    """Store a frame's camera move (caller validates it). False if tape or frame is missing."""
+    if not is_valid_id(frame_id):
+        return False
+    board = load_storyboard(data_dir, storyboard_id)
+    if board is None:
+        return False
+    frame = next((f for f in board["frames"] if f.get("id") == frame_id), None)
+    if frame is None:
+        return False
+    if frame.get("camera_move") != move:
+        frame["camera_move"] = move
+        _write_json_atomic(_storyboard_dir(data_dir, storyboard_id) / JSON_NAME, board)
+    return True
+
+
+def read_clip_meta(data_dir, storyboard_id, key):
+    folder = _storyboard_dir(data_dir, storyboard_id)
+    if folder is None or not _clip_key_ok(key):
+        return None
+    try:
+        meta = json.loads((folder / CLIPS_DIR / f"{key}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return meta if isinstance(meta, dict) else None
+
+
+def clip_file_path(data_dir, storyboard_id, key, meta):
+    """Path to the clip file the meta names, only if the name is strictly well-formed."""
+    folder = _storyboard_dir(data_dir, storyboard_id)
+    name = meta.get("file")
+    pattern = TAPE_CLIP_RE if key == TAPE_KEY else FRAME_CLIP_RE
+    if (folder is None or not _clip_key_ok(key) or not isinstance(name, str)
+            or pattern.fullmatch(name) is None or not name.startswith(key + ".")):
+        return None
+    path = folder / CLIPS_DIR / name
+    return path if path.is_file() else None
+
+
+def new_clip_tmp(data_dir, storyboard_id, key):
+    """A fresh temp path inside the tape's clips folder. Its .tmp name is never served."""
+    folder = _storyboard_dir(data_dir, storyboard_id)
+    if folder is None or not _clip_key_ok(key):
+        raise ValueError("Invalid clip key")
+    clips = folder / CLIPS_DIR
+    clips.mkdir(exist_ok=True)
+    return clips / f"{key}.{_new_id()}.tmp"
+
+
+def commit_clip(data_dir, storyboard_id, key, tmp, fingerprint, info=None):
+    """Publish a finished temp file: move to its fingerprinted name, then write the meta.
+
+    The old file is never touched until the new one is committed; leftovers are
+    then removed best-effort.
+    """
+    clips = tmp.parent
+    name = f"{key}.{fingerprint[:12]}.mp4"
+    final = clips / name
+    if final.exists():  # same fingerprint means identical content; keep the existing file
+        tmp.unlink(missing_ok=True)
+    else:
+        os.replace(tmp, final)
+    meta = {"fingerprint": fingerprint, "file": name, "created": _now(), **(info or {})}
+    _write_json_atomic(clips / f"{key}.json", meta)
+    cleanup_old_clips(clips, key, name)
+    return meta
+
+
+def cleanup_old_clips(clips, key, keep):
+    """Delete superseded clip files; a locked file is skipped and retried next time."""
+    for path in clips.glob(f"{key}.*.mp4"):
+        if path.name == keep:
+            continue
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def frame_image_path(data_dir, storyboard_id, filename):
