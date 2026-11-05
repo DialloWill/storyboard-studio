@@ -25,6 +25,9 @@ def create_app(config=None):
     app.config["DATA_DIR"] = Path(app.config["DATA_DIR"]).resolve()
     storage.ensure_data_dir(app.config["DATA_DIR"])
 
+    from . import security
+    app.before_request(security.guard)
+
     from .routes import bp
     app.register_blueprint(bp)
     return app

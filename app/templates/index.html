@@ -31,6 +31,10 @@
           <span class="sr">{{ sb.frames|length }} frame{{ '' if sb.frames|length == 1 else 's' }}</span>
         </div>
       </a>
+      <div class="tape-actions">
+        <a class="btn" href="{{ url_for('main.rename_storyboard', storyboard_id=sb.id) }}">Rename</a>
+        <a class="btn danger" href="{{ url_for('main.delete_storyboard', storyboard_id=sb.id) }}">Erase</a>
+      </div>
     </li>
     {% endfor %}
   </ul>

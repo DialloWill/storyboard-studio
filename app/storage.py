@@ -142,6 +142,84 @@ def add_frame(data_dir, storyboard_id, fields, png_bytes, frame_id=None):
     return frame
 
 
+TRASH_DIR = "_trash"
+
+
+def _trash_target(data_dir, kind, suffix):
+    """A fresh, never-colliding folder under data/_trash/<kind>/ (created lazily)."""
+    parent = Path(data_dir) / TRASH_DIR / kind
+    parent.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    base = f"{stamp}_{suffix}"
+    target = parent / base
+    n = 0
+    while target.exists():
+        n += 1
+        target = parent / f"{base}-{n}"
+    return target
+
+
+def rename_storyboard(data_dir, storyboard_id, new_title):
+    """Set a new song title (caller validates it). Returns False if the tape is missing."""
+    board = load_storyboard(data_dir, storyboard_id)
+    if board is None:
+        return False
+    board["song_title"] = new_title
+    _write_json_atomic(_storyboard_dir(data_dir, storyboard_id) / JSON_NAME, board)
+    return True
+
+
+def trash_storyboard(data_dir, storyboard_id):
+    """Soft delete: move the whole tape folder into data/_trash/tapes/. False if missing."""
+    if load_storyboard(data_dir, storyboard_id) is None:
+        return False
+    folder = _storyboard_dir(data_dir, storyboard_id)
+    target = _trash_target(data_dir, "tapes", storyboard_id)
+    os.replace(folder, target)
+    return True
+
+
+def trash_frame(data_dir, storyboard_id, frame_id):
+    """Soft delete one frame: image + a frame.json record go to data/_trash/frames/.
+
+    Order: stage the image and record in trash, then atomically rewrite the
+    tape JSON; if that fails, put the image back. False if tape or frame is missing.
+    Frame order needs no renumbering: it is derived from (section, created).
+    """
+    if not is_valid_id(frame_id):
+        return False
+    board = load_storyboard(data_dir, storyboard_id)
+    if board is None:
+        return False
+    frame = next((f for f in board["frames"] if f.get("id") == frame_id), None)
+    if frame is None:
+        return False
+    folder = _storyboard_dir(data_dir, storyboard_id)
+    image = folder / frame["filename"]
+    target = _trash_target(data_dir, "frames", f"{storyboard_id}_{frame_id}")
+    target.mkdir()
+    moved = False
+    try:
+        (target / "frame.json").write_text(
+            json.dumps({"storyboard_id": storyboard_id, "frame": frame}, indent=2),
+            encoding="utf-8")
+        if image.is_file():
+            os.replace(image, target / frame["filename"])
+            moved = True
+        board["frames"] = [f for f in board["frames"] if f.get("id") != frame_id]
+        _write_json_atomic(folder / JSON_NAME, board)
+    except Exception:
+        if moved:
+            os.replace(target / frame["filename"], image)
+        (target / "frame.json").unlink(missing_ok=True)
+        try:
+            target.rmdir()
+        except OSError:
+            pass
+        raise
+    return True
+
+
 def frame_image_path(data_dir, storyboard_id, filename):
     """Path to a frame image, or None.
 

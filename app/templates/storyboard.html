@@ -62,12 +62,15 @@
         <p>{{ f.scene }}</p>
         <p class="settings">{{ names.camera.get(f.camera, f.camera) }} &middot; {{ names.shot.get(f.shot, f.shot) }} &middot; {{ names.lighting.get(f.lighting, f.lighting) }}{% if f.direction != "none" %} &middot; {{ names.direction[f.direction] }}{% endif %}{% if f.fx != "none" %} &middot; {{ names.fx[f.fx] }}{% endif %}</p>
         <a href="{{ url_for('main.frame_download', storyboard_id=board.id, filename=f.filename) }}">Download PNG</a>
+        &middot; <a href="{{ url_for('main.delete_frame', storyboard_id=board.id, frame_id=f.id) }}">Erase frame</a>
       </figcaption>
     </figure>
     {% endfor %}
   </div>
   <div class="actions">
     <a class="btn" href="{{ url_for('main.shotlist', storyboard_id=board.id) }}">Download shot list (CSV)</a>
+    <a class="btn" href="{{ url_for('main.rename_storyboard', storyboard_id=board.id) }}">Rename tape</a>
+    <a class="btn danger" href="{{ url_for('main.delete_storyboard', storyboard_id=board.id) }}">Erase tape</a>
   </div>
   {% else %}
   <p>Tape is blank. Add the first frame below.</p>

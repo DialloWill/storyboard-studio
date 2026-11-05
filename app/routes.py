@@ -28,6 +28,15 @@ def _get_board_or_404(storyboard_id):
     return board
 
 
+def _title_error(title):
+    """Shared by create and rename; title is already stripped."""
+    if not title:
+        return "Song title is required."
+    if len(title) > MAX_TITLE:
+        return f"Song title must be {MAX_TITLE} characters or fewer."
+    return None
+
+
 def _render_index(error=None, song_title="", status=200):
     return render_template(
         "index.html",
@@ -114,10 +123,9 @@ def index():
 @bp.post("/storyboards")
 def create_storyboard():
     title = request.form.get("song_title", "").strip()
-    if not title:
-        return _render_index("Song title is required.", title, 400)
-    if len(title) > MAX_TITLE:
-        return _render_index(f"Song title must be {MAX_TITLE} characters or fewer.", title, 400)
+    error = _title_error(title)
+    if error:
+        return _render_index(error, title, 400)
     board = storage.create_storyboard(_data_dir(), title)
     return redirect(url_for("main.show_storyboard", storyboard_id=board["id"]))
 
@@ -217,3 +225,58 @@ def shotlist(storyboard_id):
         mimetype="text/csv",
         headers={"Content-Disposition": 'attachment; filename="shotlist.csv"'},
     )
+
+
+@bp.app_errorhandler(404)
+def not_found(_error):
+    return render_template("error.html", message="Nothing here. That tape or frame "
+                           "does not exist, or it was already deleted."), 404
+
+
+@bp.route("/storyboards/<storyboard_id>/rename", methods=["GET", "POST"])
+def rename_storyboard(storyboard_id):
+    board = _get_board_or_404(storyboard_id)
+    if request.method == "GET":
+        return render_template("rename.html", board=board, title=board["song_title"],
+                               error=None, max_title=MAX_TITLE)
+    title = request.form.get("song_title", "").strip()
+    error = _title_error(title)
+    if error:
+        return render_template("rename.html", board=board, title=title,
+                               error=error, max_title=MAX_TITLE), 400
+    if not storage.rename_storyboard(_data_dir(), storyboard_id, title):
+        abort(404)
+    return redirect(url_for("main.show_storyboard", storyboard_id=storyboard_id))
+
+
+@bp.route("/storyboards/<storyboard_id>/delete", methods=["GET", "POST"])
+def delete_storyboard(storyboard_id):
+    board = _get_board_or_404(storyboard_id)
+    if request.method == "GET":
+        return render_template(
+            "confirm.html", heading="Erase tape",
+            question=f"Erase tape “{board['song_title']}” and its {len(board['frames'])} frame(s)?",
+            action=url_for("main.delete_storyboard", storyboard_id=storyboard_id),
+            cancel=url_for("main.show_storyboard", storyboard_id=storyboard_id))
+    if not storage.trash_storyboard(_data_dir(), storyboard_id):
+        abort(404)
+    return redirect(url_for("main.index"))
+
+
+@bp.route("/storyboards/<storyboard_id>/frames/<frame_id>/delete", methods=["GET", "POST"])
+def delete_frame(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    frame = next((f for f in board["frames"]
+                  if storage.is_valid_id(frame_id) and f.get("id") == frame_id), None)
+    if frame is None:
+        abort(404)
+    back = url_for("main.show_storyboard", storyboard_id=storyboard_id)
+    if request.method == "GET":
+        return render_template(
+            "confirm.html", heading="Erase frame",
+            question=f"Erase this frame? “{frame['scene']}”",
+            action=url_for("main.delete_frame", storyboard_id=storyboard_id, frame_id=frame_id),
+            cancel=back)
+    if not storage.trash_frame(_data_dir(), storyboard_id, frame_id):
+        abort(404)
+    return redirect(back)

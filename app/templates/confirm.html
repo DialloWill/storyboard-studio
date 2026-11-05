@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} - Storyboard Studio{% endblock %}
+{% block content %}
+<section class="menu">
+  <h2 class="menu-title">{{ heading }}</h2>
+  <div class="menu-body">
+    <div class="error" role="alert"><p class="warn-head">!! CONFIRM !!</p><p>{{ question }}</p>
+      <p>It is moved to the trash folder, not permanently erased.</p></div>
+    <form class="inline" method="post" action="{{ action }}">
+      <button class="btn danger" type="submit">Yes, erase</button>
+    </form>
+    <a class="btn" href="{{ cancel }}">No, keep it</a>
+  </div>
+</section>
+{% endblock %}
