@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from flask import Flask
 
 from . import storage
+from .clips import settings as clip_settings
 
 
 def create_app(config=None):
@@ -18,6 +19,8 @@ def create_app(config=None):
         DATA_DIR="data",
         GENERATOR=os.environ.get("GENERATOR", "mock"),
         COMFY_API_KEY=os.environ.get("COMFY_API_KEY", ""),
+        # Ceiling for any request body (AI clip zip uploads). Larger gets the friendly 413 page.
+        MAX_CONTENT_LENGTH=clip_settings.AI_MAX_ZIP_BYTES,
     )
     app.config.update(config or {})
 

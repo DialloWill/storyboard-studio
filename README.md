@@ -50,13 +50,30 @@ Every frame has an **Animate** control. It makes a 3 second clip (640x360, 15 fp
 
 Encoding uses ffmpeg. `pip install -r requirements.txt` installs **imageio-ffmpeg**, which bundles an ffmpeg binary; that is used first, and an `ffmpeg` on your PATH is only a fallback. The bundled binary is a GPLv3 build (`--enable-gpl`, includes libx264). It is installed from PyPI at setup, not vendored into this repository, so it does not change this project's MIT license.
 
+## AI clips ($0 via Kaggle)
+
+The app never talks to an AI service. Instead it exports a kit, you run it on Kaggle's free GPU, and you import the finished clips. Import accepts MP4 files from any source (Kaggle, ComfyUI, anything else), not just this notebook.
+
+1. On the tape page, click **Export AI kit**. You get `<tape-title>-ai-kit.zip` (the stills, a `manifest.json` with one motion prompt per frame, a Kaggle notebook, and a `README.txt` with the same steps).
+2. On kaggle.com, create a **private dataset** from that zip.
+3. Create a notebook, import `storyboard_ai_kit.ipynb`, attach the dataset, set the accelerator to **GPU T4 x2** and turn **Internet** on.
+4. **Check every prompt first.** Look at each frame's picture next to its `motion_prompt`. The model animates the picture, so if the scene text has an action verb (finds, leaps, battles, uncorks, racing) or describes something the picture does not show, replace the prompt in the notebook's `PROMPT_OVERRIDES`. A mismatch once made the subject walk toward the camera and the face melt.
+5. **Run All.** Setup takes about 4 minutes (a 26.5 GB model download), then about 0.6 minutes per frame. Download `ai_clips.zip` from the Output tab, then **stop the session**.
+6. Back on the tape page, click **Import AI clips** and upload `ai_clips.zip`. To add one clip by hand, use **Upload an MP4** on a frame's Animate page.
+
+What import does: each MP4 is treated as untrusted, decoded with ffmpeg, scaled to cover 640x360 and center-cropped at 15 fps, given the same VHS look as the other clips, and re-encoded without audio or metadata (0.5 to 10 seconds). Limits: 40 clips per zip, 64 MB per clip, 256 MB per upload. Play tape uses a frame's AI clip when **Play tape uses: AI clip** is selected on its Animate page and the clip is up to date; otherwise it uses the procedural clip. If the frame's picture changes after import, the AI clip shows as stale and is not used. **Remove AI clip** moves its files to `data/_trash`.
+
+Limits of the technique: subtle motion only (lights flicker, glow pulses, slight breathing), clips of about 1.4 seconds, soft fine detail, and a static camera. Big action shots (leaps, fights, chases) are not expected to work.
+
+The notebook uses Lightricks' LTX-Video, whose weights are published under the LTX-Video Open Weights License. Read that license yourself. This project does not distribute any weights; the notebook downloads them from Hugging Face on Kaggle.
+
 ## Running tests
 
 ```powershell
 .venv\Scripts\python -m pytest -v
 ```
 
-No test touches the network or reads your `.env`. The clip tests use a fake encoder; the two tests that run real ffmpeg skip themselves when no ffmpeg is available.
+No test touches the network or reads your `.env`. The clip tests use a fake encoder and a fake video reader; the tests that run real ffmpeg skip themselves when no ffmpeg is available.
 
 ## Switching to the Comfy generator
 
@@ -71,7 +88,6 @@ The Comfy generator sends each frame's prompt to `bfl/flux-3-image` through the 
 
 ## Roadmap
 
-- AI video clips (hosted ComfyUI) mixed into Play tape
 - Mux a song under the tape
 - Configurable model choice
 - Audio analysis
@@ -86,7 +102,10 @@ app/
   presets.py       sections, cameras, shots, lighting, direction, glitch FX
   fx.py            Glitch FX pixel post-processing (numpy)
   motion.py        camera moves (allowlist, easing, crop windows)
-  clips/           animated clips: render, VHS pass, encoders (ffmpeg), fingerprints
+  clips/           animated clips: render, VHS pass, encoders and normalizer (ffmpeg), fingerprints, imported AI clips
+  ai_kit.py        Export AI kit: motion prompts, manifest, zip
+  ai_kit_notebook.py  the Kaggle notebook (nbformat v4 JSON)
+  ai_import.py     Import AI clips: safe zip handling and single uploads
   display.py       viewfinder text: timecode, date stamp, channel label
   prompt.py        build_prompt(...) pure function
   generators/      ImageGenerator base, MockGenerator, ComfyGenerator (Comfy Router, FLUX 3)

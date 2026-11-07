@@ -5,7 +5,7 @@ pick). Clips live in data/<tape>/clips/ and are published atomically.
 """
 
 from .. import fx, motion, presets, storage
-from . import fingerprint, render, settings
+from . import ai, fingerprint, render, settings
 from .errors import (ClipError, ClipSourceError, EmptyTape, EncodeError,  # noqa: F401
                      EncoderUnavailable, TooManyFrames)
 
@@ -43,14 +43,36 @@ def frame_state(data_dir, storyboard_id, frame):
     return "stale", None
 
 
+def _entry_fp(data_dir, storyboard_id, frame, png):
+    """What one frame contributes to the tape fingerprint: its chosen clip's fingerprint.
+
+    A procedural frame contributes exactly what it always did (so existing tapes stay
+    fresh); a frame using a valid AI clip contributes "ai:" plus that clip's fingerprint.
+    """
+    chosen = ai.active_clip(data_dir, storyboard_id, frame)
+    if chosen is not None:
+        return "ai:" + chosen[1]["fingerprint"]
+    return _frame_fp(png, frame)
+
+
 def _tape_fp(data_dir, storyboard_id, frames):
     fps = []
     for frame in frames:
         png = _png_path(data_dir, storyboard_id, frame)
         if png is None:
             return None
-        fps.append(_frame_fp(png, frame))
+        fps.append(_entry_fp(data_dir, storyboard_id, frame, png))
     return fingerprint.tape_fingerprint(fps)
+
+
+def tape_frame_count(data_dir, storyboard_id, board):
+    """Video frames Play tape will contain (AI clips vary in length), transitions included."""
+    frames = storage.sorted_frames(board)
+    total = 0
+    for frame in frames:
+        chosen = ai.active_clip(data_dir, storyboard_id, frame)
+        total += chosen[1].get("frames", 0) if chosen else settings.FRAMES
+    return total + max(0, len(frames) - 1) * settings.TRANSITION_FRAMES
 
 
 def tape_state(data_dir, storyboard_id, board):
@@ -119,8 +141,12 @@ def animate_frame(data_dir, storyboard_id, frame_id, encoder, move=None):
     return "rendered"
 
 
-def export_tape(data_dir, storyboard_id, encoder):
-    """Render the whole tape in sorted_frames order. "fresh" if already up to date."""
+def export_tape(data_dir, storyboard_id, encoder, normalizer=None):
+    """Render the whole tape in sorted_frames order. "fresh" if already up to date.
+
+    Per frame: the AI clip when clip_source is "ai" and the clip is valid and not stale,
+    otherwise the procedural clip's frames. `normalizer` is only needed for AI clips.
+    """
     board = storage.load_storyboard(data_dir, storyboard_id)
     if board is None:
         raise ClipSourceError("That tape no longer exists.")
@@ -136,15 +162,28 @@ def export_tape(data_dir, storyboard_id, encoder):
         if png is None:
             raise _missing()
         pngs.append(png)
-    fp = fingerprint.tape_fingerprint([_frame_fp(p, f) for p, f in zip(pngs, frames)])
+    chosen = [ai.active_clip(data_dir, storyboard_id, f) for f in frames]
+    if any(chosen):
+        if normalizer is None:
+            raise EncoderUnavailable("Video reader not available.")
+        normalizer.check_available()
+    fp = fingerprint.tape_fingerprint([_entry_fp(data_dir, storyboard_id, f, p)
+                                       for p, f in zip(pngs, frames)])
     meta = storage.read_clip_meta(data_dir, storyboard_id, storage.TAPE_KEY)
     if meta and meta.get("fingerprint") == fp and storage.clip_file_path(
             data_dir, storyboard_id, storage.TAPE_KEY, meta):
         return "fresh"
-    items = [((lambda p=p: render.load_source(p)), effective_fx(f),
-              motion.resolve_move(f.get("camera_move")), _seed(f))
-             for p, f in zip(pngs, frames)]
-    count = len(frames) * settings.FRAMES + (len(frames) - 1) * settings.TRANSITION_FRAMES
+    size = (settings.WIDTH, settings.HEIGHT)
+    items = []
+    for p, f, pick in zip(pngs, frames, chosen):
+        if pick is not None:
+            # Already VHS-treated at import: decode only, no second pass.
+            items.append((render.Prerendered(lambda path=pick[0]: normalizer.read_frames(
+                path, size, settings.FPS, settings.AI_MAX_SECONDS)), None, None, _seed(f)))
+        else:
+            items.append(((lambda p=p: render.load_source(p)), effective_fx(f),
+                          motion.resolve_move(f.get("camera_move")), _seed(f)))
     _publish(data_dir, storyboard_id, storage.TAPE_KEY, encoder,
-             render.tape_sequence(items), fp, _info(count))
+             render.tape_sequence(items), fp,
+             _info(tape_frame_count(data_dir, storyboard_id, board)))
     return "rendered"

@@ -50,4 +50,59 @@
     </form>
   </div>
 </section>
+
+<section class="menu">
+  <h2 class="menu-title">AI clip</h2>
+  <div class="menu-body">
+    {% if ai_state == "fresh" %}
+    <p class="settings">AI clip{% if ai_selected %} &middot; used in Play tape{% else %} &middot; not selected{% endif %}</p>
+    <div class="vf clip">
+      <div class="vf-screen">
+        <video controls preload="metadata" playsinline loop
+               src="{{ url_for('main.ai_clip_file', storyboard_id=board.id, frame_id=frame.id) }}">
+          Your browser cannot play this clip.
+        </video>
+        <div class="vf-scan" aria-hidden="true"></div>
+      </div>
+      <span class="vf-corner tl" aria-hidden="true"></span>
+      <span class="vf-corner tr" aria-hidden="true"></span>
+      <span class="vf-corner bl" aria-hidden="true"></span>
+      <span class="vf-corner br" aria-hidden="true"></span>
+    </div>
+    {% elif ai_state == "stale" %}
+    <p class="notice">!! STALE !! This frame's picture changed after the AI clip was imported, so Play tape ignores it. Import a new AI clip, or remove this one.</p>
+    {% elif ai_state == "missing" %}
+    <p class="notice">!! IMAGE MISSING !! This frame's picture is not on disk, so its AI clip cannot be used.</p>
+    {% else %}
+    <p class="notice">No AI clip yet. Make one with Export AI kit on the tape page, or upload any MP4 below.</p>
+    {% endif %}
+
+    {% if ai_state != "none" %}
+    <form method="post" action="{{ url_for('main.set_clip_source', storyboard_id=board.id, frame_id=frame.id) }}">
+      <div class="field">
+        <span class="mark" aria-hidden="true">&#9654;</span>
+        <label for="source">Play tape uses</label>
+        <span class="leader" aria-hidden="true"></span>
+        <select class="control" id="source" name="source">
+          <option value="procedural"{% if not ai_selected %} selected{% endif %}>Procedural clip</option>
+          <option value="ai"{% if ai_selected %} selected{% endif %}>AI clip</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">Switch source</button>
+      <a class="btn danger" href="{{ url_for('main.remove_ai_clip', storyboard_id=board.id, frame_id=frame.id) }}">Remove AI clip</a>
+    </form>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('main.import_ai_clip', storyboard_id=board.id, frame_id=frame.id) }}">
+      <div class="field">
+        <span class="mark" aria-hidden="true">&#9654;</span>
+        <label for="clip">Upload an MP4</label>
+        <span class="leader" aria-hidden="true"></span>
+        <input class="control" type="file" id="clip" name="clip" accept="video/mp4,.mp4" required>
+      </div>
+      <p class="settings">{{ ai_limits }} The file name does not matter.</p>
+      <button class="btn" type="submit">Import AI clip</button>
+    </form>
+  </div>
+</section>
 {% endblock %}

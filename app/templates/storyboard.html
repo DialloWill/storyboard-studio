@@ -63,7 +63,7 @@
         <p class="settings">{{ names.camera.get(f.camera, f.camera) }} &middot; {{ names.shot.get(f.shot, f.shot) }} &middot; {{ names.lighting.get(f.lighting, f.lighting) }}{% if f.direction != "none" %} &middot; {{ names.direction[f.direction] }}{% endif %}{% if f.fx != "none" %} &middot; {{ names.fx[f.fx] }}{% endif %}</p>
         <a href="{{ url_for('main.frame_download', storyboard_id=board.id, filename=f.filename) }}">Download PNG</a>
         &middot; <a href="{{ url_for('main.delete_frame', storyboard_id=board.id, frame_id=f.id) }}">Erase frame</a>
-        <p class="settings">Move: {{ f.move_name }}{% if not f.move_explicit %} (default){% endif %}{% if f.clip_state == "fresh" %} &middot; clip ready{% elif f.clip_state == "stale" %} &middot; clip stale{% endif %}</p>
+        <p class="settings">Move: {{ f.move_name }}{% if not f.move_explicit %} (default){% endif %}{% if f.clip_state == "fresh" %} &middot; clip ready{% elif f.clip_state == "stale" %} &middot; clip stale{% endif %} &middot; <span class="clip-badge">{% if f.clip_badge == "ai" %}AI clip{% elif f.clip_badge == "ai-stale" %}AI clip stale{% else %}procedural{% endif %}</span></p>
         <form class="clip-form" method="post" action="{{ url_for('main.animate_frame', storyboard_id=board.id, frame_id=f.id) }}">
           <label for="move-{{ f.id }}" class="sr">Camera move</label>
           <select class="control" id="move-{{ f.id }}" name="camera_move">
@@ -80,6 +80,8 @@
   <div class="actions">
     <a class="btn" href="{{ url_for('main.play_tape', storyboard_id=board.id) }}">&#9654; Play tape{% if tape_state == "stale" %} (stale){% endif %}</a>
     <a class="btn" href="{{ url_for('main.shotlist', storyboard_id=board.id) }}">Download shot list (CSV)</a>
+    <a class="btn" href="{{ url_for('main.ai_kit_download', storyboard_id=board.id) }}">Export AI kit</a>
+    <a class="btn" href="{{ url_for('main.import_ai_clips', storyboard_id=board.id) }}">Import AI clips</a>
     <a class="btn" href="{{ url_for('main.rename_storyboard', storyboard_id=board.id) }}">Rename tape</a>
     <a class="btn danger" href="{{ url_for('main.delete_storyboard', storyboard_id=board.id) }}">Erase tape</a>
   </div>

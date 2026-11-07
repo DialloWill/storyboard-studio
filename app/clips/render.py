@@ -54,14 +54,16 @@ def transition_frames(last, first, seed, count=settings.TRANSITION_FRAMES):
         yield vhs.tracking_hit(last, first, j / (count + 1), np.random.default_rng([seed, 10_000 + j]))
 
 
-def tape_sequence(items):
-    """items: iterable of (load_source_callable, fx_name, move, seed), in tape order.
+def sequence(clips):
+    """clips: iterable of (seed, frames_factory), in tape order; a factory returns an
+    iterator of RGB arrays of any length (procedural clips are 45 frames, AI clips vary).
 
-    Sources load lazily, one clip at a time, so memory stays flat.
+    Each clip is opened lazily, one at a time, so memory stays flat. A tracking-hit
+    transition needs only the previous clip's last frame and the next one's first.
     """
     prev_last = None
-    for load, fx_name, move, seed in items:
-        gen = frame_sequence(load(), fx_name, move, seed)
+    for seed, make in clips:
+        gen = iter(make())
         first = next(gen)
         if prev_last is not None:
             yield from transition_frames(prev_last, first, seed)
@@ -71,3 +73,21 @@ def tape_sequence(items):
             last = frame
             yield frame
         prev_last = last
+
+
+class Prerendered:
+    """Stands in for a still in tape_sequence items: its factory yields finished frames
+    (an imported AI clip, already given the VHS look), so no FX or camera move applies."""
+
+    def __init__(self, factory):
+        self.factory = factory
+
+
+def tape_sequence(items):
+    """items: iterable of (load_source_callable | Prerendered, fx_name, move, seed), in tape order."""
+    def clip(load, fx_name, move, seed):
+        if isinstance(load, Prerendered):
+            return seed, load.factory
+        return seed, lambda: frame_sequence(load(), fx_name, move, seed)
+
+    return sequence(clip(*item) for item in items)

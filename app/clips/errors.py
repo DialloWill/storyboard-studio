@@ -29,3 +29,8 @@ class EncoderUnavailable(ClipError):
 
 class EncodeError(ClipError):
     status = 502
+
+
+class InvalidClip(ClipError):
+    """An uploaded video that could not be read, is too short, or took too long to process."""
+    status = 422

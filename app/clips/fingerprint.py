@@ -43,3 +43,9 @@ def frame_fingerprint(frame_id, png_sha256, fx_name, move):
 def tape_fingerprint(frame_fingerprints):
     return _digest("tape", settings.CLIP_VERSION, settings.TRANSITION_FRAMES,
                    *frame_fingerprints)
+
+
+def ai_fingerprint(frame_id, png_sha256, clip_sha256):
+    """An imported AI clip: tied to the frame's PNG at import time and to the clip's own bytes."""
+    return _digest("ai", settings.CLIP_VERSION, settings.WIDTH, settings.HEIGHT,
+                   settings.FPS, frame_id, png_sha256, clip_sha256)

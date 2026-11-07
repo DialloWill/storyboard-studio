@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Import AI clips - Storyboard Studio{% endblock %}
+
+{% block content %}
+<p><a href="{{ url_for('main.show_storyboard', storyboard_id=board.id) }}">&#9664; Back to tape</a></p>
+<h2 class="page-title">{{ board.song_title }}</h2>
+
+<section class="menu">
+  <h2 class="menu-title">Import AI clips</h2>
+  <div class="menu-body">
+    {% if error %}<div class="error" role="alert"><p class="warn-head">!! TRACKING ERROR !!</p><p>{{ error }}</p></div>{% endif %}
+    <p>Upload the <code>ai_clips.zip</code> from Kaggle (or any zip of MP4 files named <code>&lt;frame id&gt;.mp4</code>).
+       Each clip is checked, resized to 640x360 at 15 fps, given the tape's VHS look, and used by Play tape
+       for its frame.</p>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('main.import_ai_clips', storyboard_id=board.id) }}">
+      <div class="field">
+        <span class="mark" aria-hidden="true">&#9654;</span>
+        <label for="clips_zip">Zip file</label>
+        <span class="leader" aria-hidden="true"></span>
+        <input class="control" type="file" id="clips_zip" name="clips_zip" accept=".zip,application/zip" required>
+      </div>
+      <p class="settings">{{ limits }} Importing can take a minute or two; keep this page open.</p>
+      <button class="btn" type="submit">Import AI clips</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

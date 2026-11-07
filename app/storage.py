@@ -239,10 +239,28 @@ CLIPS_DIR = "clips"
 TAPE_KEY = "tape"
 FRAME_CLIP_RE = re.compile(r"^[0-9a-f]{32}\.[0-9a-f]{12}\.mp4$")
 TAPE_CLIP_RE = re.compile(r"^tape\.[0-9a-f]{12}\.mp4$")
+# An imported AI clip uses the key "<frame_id>.ai": clips/<frame_id>.ai.<fp12>.mp4 + <frame_id>.ai.json
+AI_SUFFIX = ".ai"
+AI_CLIP_RE = re.compile(r"^[0-9a-f]{32}\.ai\.[0-9a-f]{12}\.mp4$")
+CLIP_SOURCES = ("procedural", "ai")
+
+
+def ai_key(frame_id):
+    return frame_id + AI_SUFFIX
+
+
+def _is_ai_key(key):
+    return isinstance(key, str) and key.endswith(AI_SUFFIX) and is_valid_id(key[:-len(AI_SUFFIX)])
 
 
 def _clip_key_ok(key):
-    return key == TAPE_KEY or is_valid_id(key)
+    return key == TAPE_KEY or is_valid_id(key) or _is_ai_key(key)
+
+
+def _clip_pattern(key):
+    if key == TAPE_KEY:
+        return TAPE_CLIP_RE
+    return AI_CLIP_RE if _is_ai_key(key) else FRAME_CLIP_RE
 
 
 def set_camera_move(data_dir, storyboard_id, frame_id, move):
@@ -261,6 +279,50 @@ def set_camera_move(data_dir, storyboard_id, frame_id, move):
     return True
 
 
+def set_clip_source(data_dir, storyboard_id, frame_id, source):
+    """Store which clip Play tape uses for a frame: "ai" or "procedural" (caller validates)."""
+    if not is_valid_id(frame_id) or source not in CLIP_SOURCES:
+        return False
+    board = load_storyboard(data_dir, storyboard_id)
+    if board is None:
+        return False
+    frame = next((f for f in board["frames"] if f.get("id") == frame_id), None)
+    if frame is None:
+        return False
+    if frame.get("clip_source") != source:
+        frame["clip_source"] = source
+        _write_json_atomic(_storyboard_dir(data_dir, storyboard_id) / JSON_NAME, board)
+    return True
+
+
+def trash_ai_clip(data_dir, storyboard_id, frame_id):
+    """Soft delete a frame's AI clip: its files go to data/_trash/ai-clips/, the frame falls
+    back to the procedural clip. False if the tape or frame is missing.
+
+    The commit marker moves first (so the clip stops existing at once; a failure there
+    raises and changes nothing). The video itself is best effort, because a browser
+    may hold it open on Windows; a leftover is cleaned up by the next import.
+    """
+    if not is_valid_id(frame_id) or load_storyboard(data_dir, storyboard_id) is None:
+        return False
+    if not set_clip_source(data_dir, storyboard_id, frame_id, "procedural"):
+        return False
+    clips = _storyboard_dir(data_dir, storyboard_id) / CLIPS_DIR
+    key = ai_key(frame_id)
+    marker = clips / f"{key}.json"
+    target = _trash_target(data_dir, "ai-clips", f"{storyboard_id}_{frame_id}")
+    if marker.is_file() or any(clips.glob(f"{key}.*")):
+        target.mkdir()
+        if marker.is_file():
+            os.replace(marker, target / marker.name)
+        for path in clips.glob(f"{key}.*"):
+            try:
+                os.replace(path, target / path.name)
+            except OSError:
+                pass
+    return True
+
+
 def read_clip_meta(data_dir, storyboard_id, key):
     folder = _storyboard_dir(data_dir, storyboard_id)
     if folder is None or not _clip_key_ok(key):
@@ -276,7 +338,7 @@ def clip_file_path(data_dir, storyboard_id, key, meta):
     """Path to the clip file the meta names, only if the name is strictly well-formed."""
     folder = _storyboard_dir(data_dir, storyboard_id)
     name = meta.get("file")
-    pattern = TAPE_CLIP_RE if key == TAPE_KEY else FRAME_CLIP_RE
+    pattern = _clip_pattern(key) if _clip_key_ok(key) else FRAME_CLIP_RE
     if (folder is None or not _clip_key_ok(key) or not isinstance(name, str)
             or pattern.fullmatch(name) is None or not name.startswith(key + ".")):
         return None
@@ -315,8 +377,11 @@ def commit_clip(data_dir, storyboard_id, key, tmp, fingerprint, info=None):
 
 def cleanup_old_clips(clips, key, keep):
     """Delete superseded clip files; a locked file is skipped and retried next time."""
+    pattern = _clip_pattern(key)
     for path in clips.glob(f"{key}.*.mp4"):
-        if path.name == keep:
+        # A frame's glob <id>.*.mp4 also matches its AI clip <id>.ai.<fp>.mp4; the strict
+        # pattern keeps each kind of clip from cleaning up the other.
+        if path.name == keep or pattern.fullmatch(path.name) is None:
             continue
         try:
             os.remove(path)

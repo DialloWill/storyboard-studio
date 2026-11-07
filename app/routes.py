@@ -6,9 +6,10 @@ from flask import (Blueprint, Response, abort, current_app, redirect,
 
 from PIL import Image
 
-from . import clips, display, fx, motion, presets, storage
+from . import ai_import, ai_kit, clips, display, fx, motion, presets, storage
 from .clips import settings as clip_settings
 from .clips.encoders import get_encoder
+from .clips.normalizer import get_normalizer
 from .generators import get_generator
 from .prompt import build_prompt
 
@@ -91,6 +92,7 @@ def _frame_views(board):
             "move_name": motion.MOVE_NAMES[motion.resolve_move(frame.get("camera_move"))],
             "move_explicit": motion.is_valid_move(frame.get("camera_move")),
             "clip_state": clips.frame_state(_data_dir(), board["id"], frame)[0],
+            "clip_badge": clips.ai.badge(_data_dir(), board["id"], frame),
             "channel": display.channel_label(frame["section"], section_name),
             "timecode": display.timecode(index),
             "stamp": display.date_stamp(frame["created"]),
@@ -333,6 +335,9 @@ def _render_animate(storyboard_id, frame_id, error=None, status=200):
     section = presets.get_preset("section", frame["section"])
     return render_template(
         "animate.html",
+        ai_state=clips.ai.ai_state(_data_dir(), storyboard_id, frame)[0],
+        ai_selected=clips.ai.clip_source(frame) == "ai",
+        ai_limits=ai_import.limits_text(),
         board=board,
         frame=frame,
         section_name=section["name"] if section else frame["section"],
@@ -389,8 +394,7 @@ def frame_clip(storyboard_id, frame_id):
 def _render_play(board, error=None, status=200):
     state = clips.tape_state(_data_dir(), board["id"], board)[0]
     count = len(board["frames"])
-    seconds = count * clip_settings.DURATION + max(0, count - 1) * (
-        clip_settings.TRANSITION_FRAMES / clip_settings.FPS)
+    seconds = clips.tape_frame_count(_data_dir(), board["id"], board) / clip_settings.FPS
     return render_template("play.html", board=board, state=state, count=count,
                            seconds=round(seconds, 1), error=error), status
 
@@ -401,7 +405,8 @@ def play_tape(storyboard_id):
     if request.method == "GET":
         return _render_play(board)
     try:
-        clips.export_tape(_data_dir(), storyboard_id, get_encoder(current_app.config))
+        clips.export_tape(_data_dir(), storyboard_id, get_encoder(current_app.config),
+                          get_normalizer(current_app.config))
     except Exception as exc:
         message, status = _clip_failure(exc)
         return _render_play(board, message, status)
@@ -415,3 +420,130 @@ def tape_clip(storyboard_id):
     if state != "fresh":
         abort(404)
     return send_file(path, mimetype=clip_settings.MIMETYPE, conditional=True)
+
+
+# ---- AI clips: export a kit for Kaggle, import the finished MP4s -----------------------
+
+@bp.app_errorhandler(413)
+def too_large(_error):
+    return render_template(
+        "error.html", message="That upload is too large. " + ai_import.limits_text()), 413
+
+
+@bp.get("/storyboards/<storyboard_id>/ai-kit.zip")
+def ai_kit_download(storyboard_id):
+    board = _get_board_or_404(storyboard_id)
+    frames = storage.sorted_frames(board)
+    if not frames:
+        return render_template("error.html", message="This tape has no frames yet. "
+                               "Add a frame, then export the AI kit."), 400
+    pngs = {}
+    for frame in frames:
+        path = storage.frame_image_path(_data_dir(), storyboard_id, frame.get("filename"))
+        if path is None:  # a kit with a hole would silently miss clips
+            return render_template("error.html", message="A frame image is missing from disk, "
+                                   "so the AI kit was not made."), 409
+        pngs[frame["id"]] = path.read_bytes()
+    return send_file(io.BytesIO(ai_kit.build_kit_zip(board, pngs)), mimetype="application/zip",
+                     as_attachment=True, download_name=ai_kit.kit_filename(board))
+
+
+def _render_ai_import(board, error=None, status=200):
+    return render_template("ai_import.html", board=board, error=error,
+                           limits=ai_import.limits_text()), status
+
+
+@bp.route("/storyboards/<storyboard_id>/ai-clips", methods=["GET", "POST"])
+def import_ai_clips(storyboard_id):
+    board = _get_board_or_404(storyboard_id)
+    if request.method == "GET":
+        return _render_ai_import(board)
+    upload = request.files.get("clips_zip")
+    if upload is None or not upload.filename:
+        return _render_ai_import(board, "Choose the ai_clips.zip file first.", 400)
+    try:
+        encoder = get_encoder(current_app.config)
+        normalizer = get_normalizer(current_app.config)
+        encoder.check_available()
+        normalizer.check_available()
+        results = ai_import.import_zip(_data_dir(), storyboard_id, board, upload.stream,
+                                       encoder, normalizer)
+    except ai_import.BadUpload as exc:
+        return _render_ai_import(board, exc.message, exc.status)
+    except Exception as exc:
+        message, status = _clip_failure(exc)
+        return _render_ai_import(board, message, status)
+    return render_template("ai_result.html", board=board, results=results,
+                           imported=sum(r["status"] == "imported" for r in results))
+
+
+@bp.post("/storyboards/<storyboard_id>/frames/<frame_id>/animate/ai")
+def import_ai_clip(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    _frame_or_404(board, frame_id)
+    # One video, so a tighter body cap than the zip upload; set before the form is parsed.
+    cap = clip_settings.AI_MAX_ENTRY_BYTES + clip_settings.MiB
+    current = request.max_content_length
+    request.max_content_length = cap if current is None else min(current, cap)
+    upload = request.files.get("clip")
+    if upload is None or not upload.filename:
+        return _render_animate(storyboard_id, frame_id, "Choose an MP4 file first.", 400)
+    try:
+        status, reason = ai_import.import_single(
+            _data_dir(), storyboard_id, frame_id, upload.stream,
+            get_encoder(current_app.config), get_normalizer(current_app.config))
+    except Exception as exc:
+        message, code = _clip_failure(exc)
+        return _render_animate(storyboard_id, frame_id, message, code)
+    if status != "imported":
+        code = 413 if reason == ai_import.TOO_LARGE else 422
+        return _render_animate(storyboard_id, frame_id, reason, code)
+    return redirect(url_for("main.animate_frame", storyboard_id=storyboard_id, frame_id=frame_id))
+
+
+@bp.post("/storyboards/<storyboard_id>/frames/<frame_id>/animate/source")
+def set_clip_source(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    frame = _frame_or_404(board, frame_id)
+    source = request.form.get("source", "")
+    if source not in storage.CLIP_SOURCES:
+        return _render_animate(storyboard_id, frame_id, "Pick a clip source from the list.", 400)
+    if source == "ai" and clips.ai.ai_state(_data_dir(), storyboard_id, frame)[0] != "fresh":
+        return _render_animate(storyboard_id, frame_id, "There is no up-to-date AI clip for this "
+                               "frame. Import an AI clip first.", 409)
+    storage.set_clip_source(_data_dir(), storyboard_id, frame_id, source)
+    return redirect(url_for("main.animate_frame", storyboard_id=storyboard_id, frame_id=frame_id))
+
+
+@bp.get("/storyboards/<storyboard_id>/frames/<frame_id>/animate/ai-clip")
+def ai_clip_file(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    frame = _frame_or_404(board, frame_id)
+    state, path, _meta = clips.ai.ai_state(_data_dir(), storyboard_id, frame)
+    if state != "fresh":
+        abort(404)  # never serve an AI clip that no longer matches the frame
+    return send_file(path, mimetype=clip_settings.MIMETYPE, conditional=True)
+
+
+@bp.route("/storyboards/<storyboard_id>/frames/<frame_id>/animate/ai/remove",
+          methods=["GET", "POST"])
+def remove_ai_clip(storyboard_id, frame_id):
+    board = _get_board_or_404(storyboard_id)
+    frame = _frame_or_404(board, frame_id)
+    if clips.ai.ai_state(_data_dir(), storyboard_id, frame)[0] == "none":
+        abort(404)
+    back = url_for("main.animate_frame", storyboard_id=storyboard_id, frame_id=frame_id)
+    if request.method == "GET":
+        return render_template(
+            "confirm.html", heading="Remove AI clip",
+            question=f"Remove the AI clip for this frame? “{frame['scene']}” "
+                     "It will go back to its procedural clip.",
+            action=url_for("main.remove_ai_clip", storyboard_id=storyboard_id, frame_id=frame_id),
+            cancel=back)
+    try:
+        if not storage.trash_ai_clip(_data_dir(), storyboard_id, frame_id):
+            abort(404)
+    except PermissionError:
+        return _render_animate(storyboard_id, frame_id, "The AI clip could not be removed "
+                               "because a video is still open. Close the video tab, then try again.", 409)
+    return redirect(back)
